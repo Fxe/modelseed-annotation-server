@@ -1,6 +1,10 @@
+import sys
+import logging
 import pymongo
 import cobrakbase
 from annotation_api import AnnotationApi
+from annotation_api_neo4j import AnnotationApiNeo4j
+from py2neo import Graph, NodeMatcher, RelationshipMatcher
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api
 
@@ -8,9 +12,12 @@ from flask_restful import Resource, Api
 #    def get(self):
 #        return {}
     
+logger = logging.getLogger(__name__)
 app = Flask(__name__)
 api = Api(app)
 #api.add_resource(Employees, '/employees')
+
+HUGE_CACHE = {}
 
 @app.route("/biochem/calculator/<inchi>/svg", methods=["GET"])
 def translate_inchi_svg(inchi):
@@ -42,7 +49,7 @@ def set_annotation_to_template(template_id, rxn_id):
 
 @app.route("/annotation/ko/<id>", methods=["GET"])
 def get_annotation_ko(id):
-    functions = get_functional_roles(id)
+    functions = annotation_api.get_functional_roles(id)
     
     resp = {}
     for k in functions:
@@ -51,7 +58,13 @@ def get_annotation_ko(id):
 
 @app.route("/annotation/rxn/<id>", methods=["GET"])
 def get_rxn_annotation(id):
-    resp = get_reaction_annotation_data(id)
+    if id in HUGE_CACHE:
+        return jsonify(HUGE_CACHE[id])
+    
+    resp = annotation_api.get_reaction_annotation_data(id)
+    
+    HUGE_CACHE[id] = resp
+    
     return jsonify(resp)
 
 def get_functional_roles(ko_id):
@@ -165,15 +178,29 @@ def get_reaction_annotation_data(rxn_id):
     return function_data
 
 if __name__ == '__main__':
-    mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
+    
+    #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
     #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
-    #aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
-    annotation_api = AnnotationApi(mclient)
-    annotation_api_atlas = AnnotationApi(mclient)
-    database = mclient['KBase']
-    mdb_kbase_ko_to_genes = database['ko_gene_mapping']
-    mdb_kbase_genomes = database['genomes']
-    mdb_kbase_taxa = database['taxa']
+    aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
+    #annotation_api = AnnotationApi(mclient)
+    annotation_api_atlas = AnnotationApi(aclient)
+    #database = mclient['KBase']
+    #mdb_kbase_ko_to_genes = database['ko_gene_mapping']
+    #mdb_kbase_genomes = database['genomes']
+    #mdb_kbase_taxa = database['taxa']
+    
+    
+    host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
+    if len(sys.argv) > 1:
+        host = sys.argv[1]
+    if len(sys.argv) > 2:
+        pwd = sys.argv[2]
+    annotation_api = AnnotationApiNeo4j(user=user, pwd=pwd, port=port, host=host)
+    annotation_api.neo4j_graph = Graph("http://neo4j:123585@" + host + ":7474")
+    annotation_api.matcher = NodeMatcher(annotation_api.neo4j_graph)
+    annotation_api.r_matcher = RelationshipMatcher(annotation_api.neo4j_graph)
+    annotation_api.init_constraints()
     
     app.run(port=8058, host='0.0.0.0')
+    
