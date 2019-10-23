@@ -255,6 +255,9 @@ class AnnotationApiNeo4j:
     
     
     def page_nodes(self, l, page, size, where = ""):
+        """
+        !!!
+        """
         result = None
         with self.driver.session() as session:
             query = session.read_transaction(self._page_nodes, l, page * size, size, where)
@@ -347,18 +350,20 @@ class AnnotationApiNeo4j:
     
     def add_template_reaction_annotation(self, template, rxn, cmps, function_rule, props):
 
-        trxn_ann_node_id = rxn.get('key') + '_' + '_'.join(sorted(list(cmps)))
+        trxn_ann_node_id = rxn.get('key') + '_' + '_'.join(sorted(list(cmps))) + '@' + template['key']
 
         trxn_ann_node = self.get_node('TemplateReactionAnnotation', trxn_ann_node_id)
 
         if trxn_ann_node == None:
             trxn_ann_node = self.add_node('TemplateReactionAnnotation', trxn_ann_node_id, props)
-            for rule in function_rule:
-                self.link_nodes(trxn_ann_node, rule, 'has_function')
+            
+        for rule in function_rule:
+            self.link_nodes(trxn_ann_node, rule, 'has_function')
 
-            self.link_nodes(template, trxn_ann_node, 'has_annotation_rule')
-            self.link_nodes(trxn_ann_node, rxn, 'has_reaction')
-
+        self.link_nodes(template, trxn_ann_node, 'has_annotation_rule')
+        self.link_nodes(trxn_ann_node, rxn, 'has_reaction')
+        self.link_nodes(rxn, trxn_ann_node, 'has_annotation_rule')
+        
         return trxn_ann_node
     
     def add_template(self, template_id, template):
@@ -370,6 +375,11 @@ class AnnotationApiNeo4j:
         for compcompound in template['compcompounds']:
             compcompound_compartment[compcompound['id']] = compcompound['templatecompartment_ref'].split('/')[-1]
 
+        template_node = self.get_node('TemplateSet', template_id)
+        if template_node == None:
+            self.add_node('TemplateSet', template_id, {})
+            template_node = self.get_node('TemplateSet', template_id)
+
         for role in template['roles']:
             roles[role['id']] = role['name']
         for role_id in roles:
@@ -380,7 +390,8 @@ class AnnotationApiNeo4j:
             else:
                 #print('errooo!')
                 pass
-
+        
+        #make functions not in database
         missing_function = set()
         found_function = set()
         for role_id in roles:
@@ -393,8 +404,10 @@ class AnnotationApiNeo4j:
         logger.warning('%d %d', len(found_function), len(missing_function))
 
         for f in missing_function:
-            self.add_node('Function', f, {})
-
+            function_data = self.add_node('Function', f, {})
+            if not function_data == None and function_data.get('key') == f:
+                function_uids[f] = function_data
+            
         cpx_to_function_uids = {}
         for cpx in template['complexes']:
             uids = set()
@@ -404,9 +417,10 @@ class AnnotationApiNeo4j:
                     uids.add(function_uids[roles[role_id]])
                 else:
                     print('errooo!')
-            cpx_to_function_uids[cpx['id']] = uids
-        #add_template(annotation_api, 'GramNegModelTemplate', templates['GramNegModelTemplate'])
-
+            cpx_id = "{}@{}".format(cpx['id'], template_id)
+            cpx_to_function_uids[cpx_id] = uids
+            
+        #make complex nodes for true complexes (functions > 1)
         for cpx_id in cpx_to_function_uids:
             if len(cpx_to_function_uids[cpx_id]) > 1:
                 complex_node = self.get_node('FunctionComplex', cpx_id)
@@ -415,27 +429,25 @@ class AnnotationApiNeo4j:
                     for n in cpx_to_function_uids[cpx_id]:
                         self.link_nodes(complex_node, n, 'has_function')
                     function_complexes[cpx_id] = complex_node
-
-        reactions = {}
+                else:
+                    function_complexes[cpx_id] = complex_node
+                    
         for rxn in template['reactions']:
             rxn_id = rxn['id']
             if '_' in rxn_id:
                 rxn_id = rxn_id.split('_')[0]
-            rxn_id += '@' + template_id
+
             rxn_node = self.get_node('ModelSeedReaction', rxn_id)
+            rxn_id += '@' + template_id
             if not rxn_node == None:
-                #print(rxn_node)
-            #rxn_id = rxn['reaction_ref'].split('/')[-1]
                 rxn_compartments = set()
                 for templateReactionReagent in rxn['templateReactionReagents']:
                     templatecompcompound_ref = templateReactionReagent['templatecompcompound_ref'].split('/')[-1]
                     rxn_compartments.add(compcompound_compartment[templatecompcompound_ref])
 
-
-
                 or_rule = set()
                 for complex_ref in rxn['templatecomplex_refs']:
-                    complex_id = complex_ref.split('/')[-1]
+                    complex_id = complex_ref.split('/')[-1] + '@' + template_id
                     if complex_id in cpx_to_function_uids:
                         if len(cpx_to_function_uids[complex_id]) > 1:
                             or_rule.add(function_complexes[complex_id])
@@ -443,8 +455,6 @@ class AnnotationApiNeo4j:
                             or_rule.add(list(cpx_to_function_uids[complex_id])[0])
                         else:
                             logger.warning('%s', complex_id)
-
-                #print(rxn['id'], rxn_compartments, or_rule)
 
                 props = {
                     'compartment' : ';'.join(sorted(list(rxn_compartments))),
@@ -459,6 +469,10 @@ class AnnotationApiNeo4j:
 
                 self.add_template_reaction_annotation(template_node, rxn_node, 
                                                       rxn_compartments, or_rule, props)
+            else:
+                logger.warning('reaction not found: %s', rxn['id'])
+            
+        return template_node
                 
                 
     def add_annotation(self, annotations, source):
@@ -591,6 +605,17 @@ class AnnotationApiNeo4j:
 
         return functions, functions_data, {'total' : len(gene_nodes), 'has_function' : found}
     
+    @staticmethod
+    def _get_template_reaction_data(tx, template_id, rxn_id):
+        query = 'MATCH(n1:TemplateSet {key:$template_id})-[r1:has_annotation_rule]->(n2:TemplateReactionAnnotation)-[r2:has_reaction]->(n3:ModelSeedReaction {key:$rxn_id}) RETURN n1, n2, n3'
+        result = tx.run(query, template_id=template_id, rxn_id=rxn_id)
+        return list(result.records())
+
+    def get_template_reaction_data(self, template_id, rxn_id):
+        result = None
+        with self.driver.session() as session:
+            result = session.read_transaction(self._get_template_reaction_data, template_id, rxn_id)
+        return result
     
     def get_reaction_annotation_data(self, rxn_id, example_genes = 10):
         kos = self.get_ko_by_seed_id(rxn_id)
@@ -611,7 +636,36 @@ class AnnotationApiNeo4j:
                 })
 
         #MISSING ADD TEMPLATE DATA
-
+        for template_set in self.page_nodes('TemplateSet', 0, 10):
+            template_id = template_set['n']['key']
+            res = self.get_template_reaction_data(template_id, rxn_id)
+            for r in res:
+                #print('pair', r['n2']['key'])
+                node = self.neo4j_graph.nodes[r['n2'].id]
+                for rel in self.neo4j_graph.match((node, ), r_type="has_function", ):
+                    if rel.end_node.has_label('FunctionComplex'):
+                        for rel_cpx in self.neo4j_graph.match((rel.end_node, ), r_type="has_function", ):
+                            function = Neo4jAnnotationFunction(rel_cpx.end_node)
+                            if not function.value in function_data:
+                                function_data[function.value] = {
+                                    'id' : function.id,
+                                    'hits' : []
+                                }
+                            function_data[function.value]['hits'].append({
+                                'score' : 0,
+                                'source' : ['template', template_id]
+                            })
+                    else:
+                        function = Neo4jAnnotationFunction(rel.end_node)
+                        if not function.value in function_data:
+                            function_data[function.value] = {
+                                'id' : function.id,
+                                'hits' : []
+                            }
+                        function_data[function.value]['hits'].append({
+                            'score' : 0,
+                            'source' : ['template', template_id]
+                        })
         #MISSING ADD SBML DATA
 
         for f in function_data:
@@ -644,7 +698,7 @@ class AnnotationApiNeo4j:
         matches = self.fetch_gene_annotation_relationships(annotation.value)
         for m in matches:
             gene_id, genome_id = m['gene_id'].split('@')
-            sources = set(m['function_source'].split(';'))
+            sources = set(m['function_source'].split(';')) if type(m['function_source']) == str else set()
             for s in sources:
                 if not s in result:
                     result[s] = {

@@ -15,9 +15,31 @@ from flask_restful import Resource, Api
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
 api = Api(app)
-#api.add_resource(Employees, '/employees')
 
 HUGE_CACHE = {}
+
+@app.route("/status", methods=["GET"])
+def status():
+    res = {
+        'server' : True,
+        'neo4j' : False,
+        'mongo_atlas' : False,
+        'mongo_atlas_info' : {},
+        'neo4j_nodes' : -1,
+    }
+    try:
+        node_count = len(annotation_api.neo4j_graph.nodes)
+        res['neo4j'] = True
+        res['neo4j_nodes'] = node_count
+    except:
+        pass
+    try:
+        cloud_status = annotation_api_atlas.mongodb.client.server_info()
+        res['mongo_atlas'] = True
+        res['mongo_atlas_info'] = cloud_status['version']
+    except:
+        pass
+    return jsonify(res)
 
 @app.route("/biochem/calculator/<inchi>/svg", methods=["GET"])
 def translate_inchi_svg(inchi):
@@ -30,17 +52,19 @@ def get_compound_svg(id):
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["GET"])
 def get_template_reaction(template_id, rxn_id):
     reaction_template_id = '{}@{}'.format(rxn_id, template_id)
+    logger.warning("/template/%s/reaction/%s", template_id, rxn_id)
     data = annotation_api_atlas.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+    print(data)
     return jsonify(data)
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["POST"])
 def set_annotation_to_template(template_id, rxn_id):
     #print('!!', request.json)
     #print('!!', request.data)
-    print(rxn_id, request.form.get('function_id'), request.form.get('logic') == 'true', type(request.form.get('logic')))
+    print(rxn_id, request.form.get('user_id'), request.form.get('function_id'), request.form.get('logic') == 'true', type(request.form.get('logic')))
 
     annotation_api_atlas.add_function_to_template_rxn(
-        request.form.get('function_id'), 
+        int(request.form.get('function_id')), 
         rxn_id, 
         request.form.get('user_id'), 
         template_id, 
@@ -196,11 +220,12 @@ if __name__ == '__main__':
         host = sys.argv[1]
     if len(sys.argv) > 2:
         pwd = sys.argv[2]
+        
     annotation_api = AnnotationApiNeo4j(user=user, pwd=pwd, port=port, host=host)
-    annotation_api.neo4j_graph = Graph("http://neo4j:123585@" + host + ":7474")
+    annotation_api.neo4j_graph = Graph("http://neo4j:" + pwd + "@" + host + ":7474")
     annotation_api.matcher = NodeMatcher(annotation_api.neo4j_graph)
     annotation_api.r_matcher = RelationshipMatcher(annotation_api.neo4j_graph)
     annotation_api.init_constraints()
     
-    app.run(port=8058, host='0.0.0.0')
+    app.run(port=8058, host='0.0.0.0', debug=False)
     

@@ -300,4 +300,4 @@ class AnnotationApi:
         #log action
         self.collection_templates_reactions.update_one(
             {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic}}}, upsert=True)
+            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)
