@@ -16,5 +16,7 @@ COPY entrypoint.sh /
 #ENV my_env_var=
 
 #ENTRYPOINT python /opt/annotation/server.py
+RUN mkdir -p /opt/data
+RUN git clone https://github.com/ModelSEED/ModelSEEDDatabase.git /opt/data/ModelSEEDDatabase
 
 ENTRYPOINT ["/entrypoint.sh"]
