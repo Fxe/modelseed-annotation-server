@@ -8,6 +8,9 @@ from cobrakbase.core.kbasegenomesgenome import normalize_role
 
 logger = logging.getLogger(__name__)
 
+#temp before redis cacheing
+GENOME_SET_CACHE = {}
+
 def process_list(l, sep = ' ### ', subsep = ' ## '):
     j = []
     for o in l:
@@ -108,6 +111,7 @@ class AnnotationApiNeo4j:
             'FunctionSource', 
             'FunctionGroup', 
             'Function',
+            'GenomeSet',
             'SearchFunction',
             'FunctionComplex',
             #'Genome', 
@@ -176,6 +180,14 @@ class AnnotationApiNeo4j:
             tx.commit()
             return True
         return False
+    
+    def get_or_create(self, node_type, key, props = {}):
+        n = self.get_node(node_type, key)
+        if n == None:
+            self.add_node(node_type, key, props)
+            n = self.get_node(node_type, key)
+            
+        return n
     
     def add_node(self, node_type, key, props = {}):
         props['key'] = key
@@ -566,7 +578,38 @@ class AnnotationApiNeo4j:
             
         return genome_node
             
-        
+    def list_genome_sets(self):
+        m = self.neo4j_graph.nodes.match("GenomeSet")
+
+        genome_sets = set()
+        for n in m:
+            genome_sets.add(n['key'])
+        return genome_sets
+    
+    def get_genome_set(self, genome_set_id):
+        if genome_set_id in GENOME_SET_CACHE:
+            return GENOME_SET_CACHE[genome_set_id]
+        m = self.neo4j_graph.nodes.match("GenomeSet", key=genome_set_id)
+        if len(m) < 1:
+            return None
+
+        genomes = set()
+
+        genome_set_node = m.first()
+        for rel in self.neo4j_graph.match((genome_set_node, ), r_type="has_genome", ):
+            genome_id = rel.end_node['key']
+            genomes.add(genome_id)
+            
+        GENOME_SET_CACHE[genome_set_id] = genomes
+        return genomes
+
+    def add_genome_to_genome_set(annotation_api, genome_set_id, genome_id):
+        genome_set_node = annotation_api.get_node('GenomeSet', genome_set_id)
+        genome_node = annotation_api.get_node('RefSeqGenome', genome_id)
+        if genome_set_node == None or genome_node == None:
+            return False
+        annotation_api.link_nodes(genome_set_node, genome_node, 'has_genome')
+        return True
         
     def get_functional_roles2(self, ko_id):
         m = self.neo4j_graph.nodes.match("KeggOrthology", key=ko_id)

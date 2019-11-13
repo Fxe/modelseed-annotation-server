@@ -2,6 +2,7 @@ import sys
 import logging
 import pymongo
 import cobrakbase
+import pandas as pd
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
@@ -18,6 +19,11 @@ api = Api(app)
 
 HUGE_CACHE = {}
 
+def clear_nan(d):
+    for k in d:
+        if type(d[k]) == float and pd.isna(d[k]):
+            d[k] = ""
+    
 @app.route("/status", methods=["GET"])
 def status():
     res = {
@@ -47,6 +53,24 @@ def translate_inchi_svg(inchi):
 
 @app.route("/biochem/cpd/<id>/svg", methods=["GET"])
 def get_compound_svg(id):
+
+        
+    return ""
+
+@app.route("/biochem/cpd/<id>", methods=["GET"])
+def get_seed_compound(id):
+    o = modelseed_local.get_seed_compound(id)
+    if not o == None:
+        clear_nan(o.data)
+        return jsonify(o.data)
+    return ""
+
+@app.route("/biochem/rxn/<id>", methods=["GET"])
+def get_seed_reaction(id):
+    o = modelseed_local.get_seed_reaction(id)
+    if not o == None:
+        clear_nan(o.data)
+        return jsonify(o.data)
     return ""
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["GET"])
@@ -68,8 +92,24 @@ def set_annotation_to_template(template_id, rxn_id):
         rxn_id, 
         request.form.get('user_id'), 
         template_id, 
-        request.form.get('logic') == 'true')
+        request.form.get('logic'))
     return ""
+
+@app.route("/annotation/genome_set", methods=["GET"])
+def list_genome_set():
+    res = annotation_api.list_genome_sets()
+    
+    return jsonify(list(res))
+
+@app.route("/annotation/genome_set/<id>", methods=["GET"])
+def get_genome_set(id):
+    res = annotation_api.get_genome_set(id)
+    resp = {}
+    if not res == None:
+        resp['id'] = id
+        resp['genomes'] = list(res)
+    
+    return jsonify(resp)
 
 @app.route("/annotation/ko/<id>", methods=["GET"])
 def get_annotation_ko(id):
@@ -214,6 +254,7 @@ if __name__ == '__main__':
     #mdb_kbase_genomes = database['genomes']
     #mdb_kbase_taxa = database['taxa']
     
+    modelseed_local = cobrakbase.modelseed.from_local('/Users/fliu/workspace/jupyter/ModelSEEDDatabase')
     
     host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
     if len(sys.argv) > 1:

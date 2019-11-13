@@ -287,16 +287,17 @@ class AnnotationApi:
         timestamp = int(time.time())
 
         #update template
-        if logic:
-            self.collection_templates_reactions.update_one(
-                {'_id' : reaction_template_id}, 
-                {'$addToSet' : {'functions' : function_id}}, 
-                upsert=True)
-        else:
-            self.collection_templates_reactions.update_one(
-                {'_id' : reaction_template_id}, 
-                {'$pull' : {'functions' : function_id}}, 
-                upsert=True)
+        doc = self.collection_templates_reactions.find_one({'_id':reaction_template_id})
+        if doc == None:
+            self.collection_templates_reactions.insert_one({
+                '_id' : reaction_template_id,
+                'functions' : {},
+                'log' : []
+            })
+        self.collection_templates_reactions.update_one(
+            {"_id" :reaction_template_id},
+            {'$set' : {"functions." + str(function_id) : logic}})
+
         #log action
         self.collection_templates_reactions.update_one(
             {'_id' : reaction_template_id}, 
