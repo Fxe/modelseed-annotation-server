@@ -1,8 +1,22 @@
 import sys
+import json
 import logging
-import pymongo
-import cobrakbase
 import pandas as pd
+
+import redis
+import pymongo
+
+import cobra
+import escher
+import cobrakbase
+
+import modelseed_escher
+
+import biosapi
+from bios_mock import BIOS_MOCK
+
+from escher_factory_api import process_build_data_input, EscherFactoryApi
+from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
@@ -14,6 +28,7 @@ from flask_restful import Resource, Api
 #        return {}
     
 logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 api = Api(app)
 
@@ -46,6 +61,38 @@ def status():
     except:
         pass
     return jsonify(res)
+  
+@app.route("/escher/dataset", methods=["GET"])
+def list_datasets():
+    return jsonify(list(escher_manager.list_datasets()))
+  
+@app.route("/escher/dataset/<dataset>/model", methods=["GET"])
+def list_model(dataset):
+    return jsonify(list(escher_manager.list_datasets(dataset)))
+  
+@app.route("/escher/dataset/<dataset>/map", methods=["GET"])
+def list_map(dataset):
+    return jsonify(list(escher_manager.list_maps(dataset)))
+
+@app.route("/escher/build/grid", methods=["POST"])
+def build_grid_map():
+    build_data = request.get_json()
+    map_assembly = process_build_data_input(build_data)
+    
+    print(map_assembly)
+    
+    escher_factory = EscherFactoryApi(escher_manager)
+    escher_factory.cpd_mapping = MODEL_CPD_MAPPING
+    
+    master = escher_factory.build_grid(map_assembly, (3, 3))
+    #print(content)
+    #build_data = request.json
+        
+    #[ "iMM904;c;c;ModelSEED.NAD(P) Biosynthesis", "iMM904;c;c;ModelSEED.Pentose and Glucuronate Interconversions", "iMM904;c;c;ModelSEED.Mannitol Utilization", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.NAD(P) Biosynthesis", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Pentose and Glucuronate Interconversions", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Mannitol Utilization" ]
+    
+    #base = '/Users/fliu/Library/Caches/escher/1-0-0/5/maps/'
+    #m = escher_manager.get_map('ModelSEED', 'ModelSEED', 'Chorismate Synthesis')
+    return jsonify(master.escher_map)
 
 @app.route("/biochem/calculator/<inchi>/svg", methods=["GET"])
 def translate_inchi_svg(inchi):
@@ -53,7 +100,6 @@ def translate_inchi_svg(inchi):
 
 @app.route("/biochem/cpd/<id>/svg", methods=["GET"])
 def get_compound_svg(id):
-
         
     return ""
 
@@ -120,6 +166,13 @@ def get_annotation_ko(id):
         resp[k] = len(functions[k])
     return jsonify(resp)
 
+@app.route("/annotation/ortholog/<seed_id>", methods=["GET"])
+def get_ortholog_from_seed_rxn(seed_id):
+    all_orthologs, matched_orthologs, genome_match = annotation_orth.get_orthologs_from_seed_rxn_id(seed_id)
+    result = annotation_orth.process_data(all_orthologs, genome_match)
+    
+    return jsonify(result)
+
 @app.route("/annotation/rxn/<id>", methods=["GET"])
 def get_rxn_annotation(id):
     if id in HUGE_CACHE:
@@ -128,6 +181,29 @@ def get_rxn_annotation(id):
     resp = annotation_api.get_reaction_annotation_data(id)
     
     HUGE_CACHE[id] = resp
+    
+    return jsonify(resp)
+
+@app.route("/model", methods=["GET"])
+def list_models():
+    
+    return jsonify([])
+
+@app.route("/model/<id>/cmp", methods=["GET"])
+def list_model_compartments(id):
+    resp = bios.get_model_compartments(id)
+    
+    return jsonify(resp)
+
+@app.route("/model/<id>/spi", methods=["GET"])
+def list_model_species(id):
+    resp = bios.get_model_species(id)
+    
+    return jsonify(resp)
+
+@app.route("/model/<id>/rxn", methods=["GET"])
+def list_model_reactions(id):
+    resp = bios.get_model_reactions(id)
     
     return jsonify(resp)
 
@@ -241,8 +317,20 @@ def get_reaction_annotation_data(rxn_id):
         function_data[function]['subsystems'] = subsystem_tags
     return function_data
 
+escher_manager = None
+annotation_api = None
+annotation_orth = None
+MODEL_CPD_MAPPING = None
+bios = None
+  
 if __name__ == '__main__':
     
+    #bios = biosapi.BIOS()
+    bios = BIOS_MOCK('data/bios_cache.json')
+    with open('data/cpd_mapping_cache.json', 'r') as f:
+        MODEL_CPD_MAPPING = json.loads(f.read())
+        
+    escher_manager = modelseed_escher.EscherManager(escher)
     #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
     #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
@@ -267,6 +355,9 @@ if __name__ == '__main__':
     annotation_api.matcher = NodeMatcher(annotation_api.neo4j_graph)
     annotation_api.r_matcher = RelationshipMatcher(annotation_api.neo4j_graph)
     annotation_api.init_constraints()
+    
+    kbase = cobrakbase.KBaseAPI('UGOG6KLAWTCYI2ASYECYHNIIFTEXGA2J')
+    annotation_orth = build_annotation_ortholog(kbase)
     
     app.run(port=8058, host='0.0.0.0', debug=False)
     

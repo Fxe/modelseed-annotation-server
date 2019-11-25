@@ -4,6 +4,7 @@ RUN pip install --upgrade pip
 RUN pip install requests
 RUN pip install flask
 RUN pip install flask_restful
+RUN pip install redis
 RUN pip install pymongo
 RUN pip install py2neo
 RUN pip install dnspython
