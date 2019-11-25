@@ -9,7 +9,7 @@ def read_json(filename):
         data = json.loads(f.read())
     return data
 
-def build_annotation_ortholog(kbase):
+def build_annotation_ortholog(kbase, path_to_cache):
     ref = '49164/21/1' #FungalTemplate13GenomeOrthologs-OrthoMCL janakakbase:narrative_1570052138482
     info = kbase.get_object_info_from_ref(ref)
     ortho = kbase.get_object(info.id, info.workspace_id)
@@ -17,7 +17,7 @@ def build_annotation_ortholog(kbase):
     ref_to_genome = {}
     genome_id_to_ref = {}
 
-    annotation_path = '/Users/fliu/workspace/jupyter/data/www/fungi_viz/data/annotation_cache/'
+    annotation_path = path_to_cache + '/cache/genomes/'
 
     for genome_ref in ortho['genome_refs']:
         info = kbase.get_object_info_from_ref(genome_ref)
@@ -61,8 +61,8 @@ def build_annotation_ortholog(kbase):
     model_to_genome = {}
     
     for model_id in model_ids:
-        fbamodel_base = cobrakbase.core.model.KBaseFBAModel(read_json('/Users/fliu/workspace/jupyter/data/www/fungi_viz/data/kbase/' + model_id + base_prefix))
-        fbamodel_gpr = cobrakbase.core.model.KBaseFBAModel(read_json('/Users/fliu/workspace/jupyter/data/www/fungi_viz/data/kbase/' + model_id + gpr_prefix))
+        fbamodel_base = cobrakbase.core.model.KBaseFBAModel(read_json(path_to_cache + '/cache/models/' + model_id + base_prefix))
+        fbamodel_gpr = cobrakbase.core.model.KBaseFBAModel(read_json(path_to_cache + '/cache/models/' + model_id + gpr_prefix))
         genome_ref = fbamodel_gpr.data['genome_ref']
         info = kbase.get_object_info_from_ref(genome_ref)
         model_to_genome[model_id] = info.id

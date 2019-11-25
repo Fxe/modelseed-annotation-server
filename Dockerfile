@@ -17,6 +17,7 @@ RUN pip install dnspython
 RUN pip install neo4j
 RUN pip install cobra
 RUN pip install cobrakbase==0.2.2
+RUN pip install Escher==1.6.0
 RUN pip install /opt/build/modelseed-escher
 
 COPY . /opt/annotation

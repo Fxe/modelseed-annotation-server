@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 api = Api(app)
 
+CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -326,8 +327,8 @@ bios = None
 if __name__ == '__main__':
     
     #bios = biosapi.BIOS()
-    bios = BIOS_MOCK('data/bios_cache.json')
-    with open('data/cpd_mapping_cache.json', 'r') as f:
+    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache.json')
+    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache.json', 'r') as f:
         MODEL_CPD_MAPPING = json.loads(f.read())
         
     escher_manager = modelseed_escher.EscherManager(escher)
@@ -357,7 +358,7 @@ if __name__ == '__main__':
     annotation_api.init_constraints()
     
     kbase = cobrakbase.KBaseAPI('UGOG6KLAWTCYI2ASYECYHNIIFTEXGA2J')
-    annotation_orth = build_annotation_ortholog(kbase)
+    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER)
     
     app.run(port=8058, host='0.0.0.0', debug=False)
     
