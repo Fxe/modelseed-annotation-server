@@ -1,13 +1,15 @@
 FROM python
 
+RUN mkdir -p /opt/data
+RUN git clone https://github.com/ModelSEED/ModelSEEDDatabase.git /opt/data/ModelSEEDDatabase
+
 RUN mkdir -p /opt/build
 RUN git clone https://github.com/ModelSEED/modelseed-escher.git /opt/build/modelseed-escher
 
 RUN mkdir -p /opt/build
 RUN git clone https://github.com/Fxe/biosapi.git /opt/build/biosapi
 
-RUN mkdir -p /opt/data
-RUN git clone https://github.com/ModelSEED/ModelSEEDDatabase.git /opt/data/ModelSEEDDatabase
+
 
 RUN pip install --upgrade pip
 RUN pip install requests
