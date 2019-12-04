@@ -16,6 +16,7 @@ import biosapi
 from bios_mock import BIOS_MOCK
 
 from escher_factory_api import process_build_data_input, EscherFactoryApi
+from escher_grid_merge import generate_integration_report
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
@@ -75,17 +76,40 @@ def list_model(dataset):
 def list_map(dataset):
     return jsonify(list(escher_manager.list_maps(dataset)))
 
+@app.route("/escher/dataset/<dataset>/map/<map_id>", methods=["GET"])
+def get_escher_map(dataset, map_id):
+    if '.' in map_id:
+        a, b = map_id.split('.', 1)
+        em = escher_manager.get_map(dataset, a, b)
+        return jsonify(em.escher_map)
+    return jsonify(list(escher_manager.list_maps(dataset)))
+
+@app.route("/escher/cluster", methods=["POST"])
+def escher_cluster_map():
+    cluster_data = request.get_json()
+    with open('/Users/fliu/workspace/jupyter/data/www/annotation/data/latest_cluster.json', 'w') as f:
+        f.write(json.dumps(cluster_data))
+        
+    report = generate_integration_report(cluster_data, escher_manager)
+        
+    return jsonify(report)
+
+
 @app.route("/escher/build/grid", methods=["POST"])
 def build_grid_map():
     build_data = request.get_json()
-    map_assembly = process_build_data_input(build_data)
-    
+    print(build_data)
+    map_assembly = process_build_data_input(build_data['maps'])
+    grid_x = build_data['x']
+    grid_y = build_data['y']
     print(map_assembly)
     
     escher_factory = EscherFactoryApi(escher_manager)
     escher_factory.cpd_mapping = MODEL_CPD_MAPPING
+    escher_factory.rxn_mapping = MODEL_RXN_MAPPING
+    escher_factory.bios_cache = bios.all_data
     
-    master = escher_factory.build_grid(map_assembly, (3, 3))
+    master = escher_factory.build_grid(map_assembly, (grid_x, grid_y))
     #print(content)
     #build_data = request.json
         
@@ -322,14 +346,17 @@ escher_manager = None
 annotation_api = None
 annotation_orth = None
 MODEL_CPD_MAPPING = None
+MODEL_RXN_MAPPING = None
 bios = None
   
 if __name__ == '__main__':
     
     #bios = biosapi.BIOS()
     bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache.json')
-    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache.json', 'r') as f:
+    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache3.json', 'r') as f:
         MODEL_CPD_MAPPING = json.loads(f.read())
+    with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache3.json', 'r') as f:
+        MODEL_RXN_MAPPING = json.loads(f.read())
         
     escher_manager = modelseed_escher.EscherManager(escher)
     #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
@@ -338,11 +365,8 @@ if __name__ == '__main__':
     aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
     #annotation_api = AnnotationApi(mclient)
     annotation_api_atlas = AnnotationApi(aclient)
-    #database = mclient['KBase']
-    #mdb_kbase_ko_to_genes = database['ko_gene_mapping']
-    #mdb_kbase_genomes = database['genomes']
-    #mdb_kbase_taxa = database['taxa']
     
+    #####      Load ModelSEED     #####
     modelseed_local = cobrakbase.modelseed.from_local('/Users/fliu/workspace/jupyter/ModelSEEDDatabase')
     
     host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
@@ -360,5 +384,8 @@ if __name__ == '__main__':
     kbase = cobrakbase.KBaseAPI('UGOG6KLAWTCYI2ASYECYHNIIFTEXGA2J')
     annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER)
     
+    #print(escher_manager.escher.get_cache_dir())
+    #app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
+    #print(app.config)
     app.run(port=8058, host='0.0.0.0', debug=False)
     
