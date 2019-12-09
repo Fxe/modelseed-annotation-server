@@ -15,6 +15,7 @@ import modelseed_escher
 import biosapi
 from bios_mock import BIOS_MOCK
 
+from curation_api import CurationApi
 from escher_factory_api import process_build_data_input, EscherFactoryApi
 from escher_grid_merge import generate_integration_report
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
@@ -34,6 +35,7 @@ app = Flask(__name__)
 api = Api(app)
 
 CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
+MODELSEED_FOLDER = '/Users/fliu/workspace/jupyter/ModelSEEDDatabase'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -57,7 +59,7 @@ def status():
     except:
         pass
     try:
-        cloud_status = annotation_api_atlas.mongodb.client.server_info()
+        cloud_status = annotation_api_atlas.server_info()
         res['mongo_atlas'] = True
         res['mongo_atlas_info'] = cloud_status['version']
     except:
@@ -107,7 +109,7 @@ def build_grid_map():
     escher_factory = EscherFactoryApi(escher_manager)
     escher_factory.cpd_mapping = MODEL_CPD_MAPPING
     escher_factory.rxn_mapping = MODEL_RXN_MAPPING
-    escher_factory.bios_cache = bios.all_data
+    escher_factory.bios_cache = bios.model_data
     
     master = escher_factory.build_grid(map_assembly, (grid_x, grid_y))
     #print(content)
@@ -166,6 +168,52 @@ def set_annotation_to_template(template_id, rxn_id):
         request.form.get('logic'))
     return ""
 
+@app.route("/template/<template_id>/reaction/<rxn_id>/gene", methods=["POST"])
+def post_template_reaction_gene_annotation(template_id, rxn_id):
+    data = request.get_json()
+    if 'genome_id' in data and 'gene_id' in data \
+     and 'user_id' in data and 'logic' in data and 'desc' in data:
+        annotation_api_atlas.set_annotation_to_gene(
+            data['genome_id'], 
+            data['gene_id'], 
+            rxn_id, 
+            data['user_id'], 
+            template_id, 
+            data['logic'],
+            data['desc']
+        )
+    else:
+        print('bad params:', data.keys())
+    return ""
+
+@app.route("/template/<template_id>/reaction/<rxn_id>/gene", methods=["GET"])
+def get_template_reaction_gene_annotation(template_id, rxn_id):
+    logger.warning("/template/%s/reaction/%s/gene", template_id, rxn_id)
+    data = annotation_api_atlas.get_reaction_gene_annotation(rxn_id, template_id)
+    return jsonify(data)
+
+@app.route("/template/<template_id>/model_reaction/<mrxn_id>/map", methods=["POST"])
+def post_template_model_reaction_mapping(template_id, mrxn_id):
+    data = request.get_json()
+    annotation_api_atlas.add_function_to_template_rxn(
+        int(request.form.get('function_id')), 
+        rxn_id, 
+        request.form.get('user_id'), 
+        template_id, 
+        request.form.get('logic'))
+    return ""
+
+@app.route("/template/<template_id>/model_compound/<cpd_id>/map", methods=["POST"])
+def post_template_model_compound_mapping(template_id, rxn_id):
+    data = request.get_json()
+    annotation_api_atlas.add_function_to_template_rxn(
+        int(request.form.get('function_id')), 
+        rxn_id, 
+        request.form.get('user_id'), 
+        template_id, 
+        request.form.get('logic'))
+    return ""
+
 @app.route("/annotation/genome_set", methods=["GET"])
 def list_genome_set():
     res = annotation_api.list_genome_sets()
@@ -193,8 +241,8 @@ def get_annotation_ko(id):
 
 @app.route("/annotation/ortholog/<seed_id>", methods=["GET"])
 def get_ortholog_from_seed_rxn(seed_id):
-    all_orthologs, matched_orthologs, genome_match = annotation_orth.get_orthologs_from_seed_rxn_id(seed_id)
-    result = annotation_orth.process_data(all_orthologs, genome_match)
+    all_orthologs, matched_orthologs, genome_match = annotation_orth.get_orthologs_from_seed_rxn_id2(seed_id)
+    result = annotation_orth.process_data2(all_orthologs, genome_match)
     
     return jsonify(result)
 
@@ -352,10 +400,10 @@ bios = None
 if __name__ == '__main__':
     
     #bios = biosapi.BIOS()
-    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache.json')
-    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache3.json', 'r') as f:
+    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
+    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
         MODEL_CPD_MAPPING = json.loads(f.read())
-    with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache3.json', 'r') as f:
+    with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:
         MODEL_RXN_MAPPING = json.loads(f.read())
         
     escher_manager = modelseed_escher.EscherManager(escher)
@@ -364,10 +412,12 @@ if __name__ == '__main__':
     #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
     aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
     #annotation_api = AnnotationApi(mclient)
-    annotation_api_atlas = AnnotationApi(aclient)
+    #annotation_api_atlas = AnnotationApi(aclient)
+    mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
+    annotation_api_atlas = CurationApi(mclient, 'test')
     
     #####      Load ModelSEED     #####
-    modelseed_local = cobrakbase.modelseed.from_local('/Users/fliu/workspace/jupyter/ModelSEEDDatabase')
+    modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
     
     host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
     if len(sys.argv) > 1:
@@ -382,8 +432,9 @@ if __name__ == '__main__':
     annotation_api.init_constraints()
     
     kbase = cobrakbase.KBaseAPI('UGOG6KLAWTCYI2ASYECYHNIIFTEXGA2J')
-    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER)
-    
+    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
+    annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
+    annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
     #print(escher_manager.escher.get_cache_dir())
     #app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
     #print(app.config)

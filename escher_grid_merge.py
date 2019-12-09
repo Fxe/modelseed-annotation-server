@@ -67,6 +67,37 @@ def add_layers(em, cluster_grid, escher_manager):
                         
     return em
 
+def sort_by_database(report, db):
+    m = {}
+    records = []
+    for r in report['records']:
+        if 'seed.compound' in r['database']:
+            key = tuple(sorted(r['database']['seed.compound']))
+            if not key in m:
+                m[key] = {}
+            for cmp in r['model_data']:
+                if not cmp in m[key]:
+                    m[key][cmp] = {}
+                for model_id in r['model_data'][cmp]:
+                    if not model_id in m[key][cmp]:
+                        m[key][cmp][model_id] = set()
+                    m[key][cmp][model_id] |= set(r['model_data'][cmp][model_id])
+        else:
+            records.append(r)
+    for key in m:
+        record = {
+            'model_data' : {},
+            'database' : {db : list(key)}
+        }
+        for cmp in m[key]:
+            record[cmp] = {}
+            for model_id in m[key][cmp]:
+                record[cmp][model_id] = list(m[key][cmp][model_id])
+        records.append(record)
+        #print(key)
+    report['records'] = records
+    return report
+
 def report(cluster_data, em):
     cluster_map = em.escher_map
     any_merge = True
@@ -133,5 +164,8 @@ def generate_integration_report(cluster_params, escher_manager):
     em = add_layers(em, cluster_params['grid'], escher_manager)
     ec = EscherCluster(25)
     cluster_data = ec.cluster(em)
+    #cluster_ids = ec.cluster_ids(cluster_data, em)
+    #cluster_uids = ec.ids_to_uid(cluster_ids, em)
     result = report(cluster_data, em)
+    result = sort_by_database(result, 'seed.compound')
     return result
