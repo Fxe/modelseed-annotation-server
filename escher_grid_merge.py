@@ -45,6 +45,44 @@ def add_nodes(em1, em2, next_id, x_offset = 0, y_offset = 0):
             next_id += 1
     return next_id
 
+
+
+def add_nodes2(em1, em2, next_id, x_offset = 0, y_offset = 0):
+    for uid in em1.nodes:
+        n = em1.nodes[uid]
+        if n['node_type'] == 'midmarker':
+            n_copy = copy.deepcopy(n)
+            n_copy['x'] += x_offset
+            n_copy['y'] += y_offset
+            #n_copy['label_x'] += x_offset
+            #n_copy['label_y'] += y_offset
+            em2.escher_graph['nodes'][next_id] = n_copy
+            next_id += 1
+    return next_id
+
+def get_reaction_midmarker_uid(uid, em):
+    for rxn_uid in em.escher_graph['reactions']:
+        rxn_node = em.escher_graph['reactions'][rxn_uid]
+        #print(rxn_node)
+        for segment_uid in rxn_node['segments']:
+            segment = rxn_node['segments'][segment_uid]
+            if uid == segment['from_node_id']:
+                return rxn_node
+            if uid == segment['to_node_id']:
+                return rxn_node
+    return None
+
+def tag_midmarker_reaction(em, cmp = None):
+    for uid in em.nodes:
+        n = em.nodes[uid]
+        if n['node_type'] == 'midmarker':
+            rxn_node = get_reaction_midmarker_uid(uid, em)
+            if not rxn_node == None:
+                #print(uid, rxn_node['bigg_id'])
+                n['rxn_id'] = rxn_node['bigg_id']
+                if not cmp == None:
+                    n['compartment'] = cmp
+
 def add_layers(em, cluster_grid, escher_manager):
     #em = EscherMap(cluster_params['escher_map'])
     next_id = get_next_id(em)
@@ -54,14 +92,20 @@ def add_layers(em, cluster_grid, escher_manager):
             for grid_cell in cluster_grid[map_id]:
                 seed_em = escher_manager.get_map('ModelSEED', a, b)
                 canvas = seed_em.escher_graph['canvas']
+                
                 x, y, w, h, cmp = grid_cell
+                tag_midmarker_reaction(seed_em, cmp)
                 x_offset = (x * w) + -1 * canvas['x']
                 y_offset = (y * h) + -1 * canvas['y']
                 seed_em_cmp = seed_em.clone()
                 move_to_compartment(cmp, seed_em_cmp)
                 next_id = add_nodes(seed_em, em, next_id, 
                                     x_offset, y_offset)
+                next_id = add_nodes2(seed_em, em, next_id, 
+                                    x_offset, y_offset)
                 next_id = add_nodes(seed_em_cmp, em, next_id, 
+                                    x_offset, y_offset)
+                next_id = add_nodes2(seed_em_cmp, em, next_id, 
                                     x_offset, y_offset)
                 print(next_id, map_id, x, y, w, h, cmp)
                         
@@ -169,3 +213,85 @@ def generate_integration_report(cluster_params, escher_manager):
     result = report(cluster_data, em)
     result = sort_by_database(result, 'seed.compound')
     return result
+
+def get_seed_and_cmp(cc, em_grid):
+    cmp = None
+    seed_id = None
+    for uid in cc:
+        n = em_grid.nodes[uid]
+        if n['bigg_id'].startswith('cpd'):
+            seed_id = n['bigg_id']
+            if n['bigg_id'][-2:][0] == '_':
+                #print(seed_id[-2:][0], seed_id[:-2], seed_id[-1:])
+                seed_id = n['bigg_id'][:-2]
+                cmp = n['bigg_id'][-1:]
+        #print(n['bigg_id'])
+        #print(n['bigg_id'], seed_id, cmp)
+    return seed_id, cmp
+
+def get_midmarker_uid(rxn_node, em):
+    for segment_uid in rxn_node['segments']:
+        segment = rxn_node['segments'][segment_uid]
+        if em.nodes[segment['from_node_id']]['node_type'] == 'midmarker':
+            return segment['from_node_id']
+        if em.nodes[segment['to_node_id']]['node_type'] == 'midmarker':
+            return segment['to_node_id']
+    return None
+
+def merge_with_layer(cluster_params, escher_manager, ms = None):
+    em = EscherMap(cluster_params['escher_map'])
+    em_merge = em.clone()
+    
+    em = add_layers(em, cluster_params['grid'], escher_manager)
+    ec = EscherCluster(25)
+    cpd_cluster = ec.cluster(em)
+    rxn_clusters = ec.compute_all_metabolite_clusters(em.escher_graph, 'midmarker')
+    uid_to_cluster = {}
+    rxn_uid_to_cluster = {}
+    for uid_set in cpd_cluster:
+        for uid in uid_set:
+            uid_to_cluster[uid] = uid_set
+    for uid_set in rxn_clusters:
+        for uid in uid_set:
+            rxn_uid_to_cluster[uid] = uid_set
+            
+    cpd_remap = {}
+    rxn_remap = {}
+    for uid in em_merge.nodes:
+        n = em_merge.nodes[uid]
+        if n['node_type'] == 'metabolite':
+            #print(n['bigg_id'])
+            if uid in uid_to_cluster:
+                seed_id, cmp = get_seed_and_cmp(uid_to_cluster[uid], em)
+                if not ms == None and not seed_id == None:
+                    seed_cpd = ms.get_seed_compound(seed_id)
+                    n['name'] = seed_cpd.name
+                #print(n['bigg_id'], seed_id, cmp)
+                if not cmp == None:
+                    seed_id += '_' + cmp
+                cpd_remap[n['bigg_id']] = seed_id
+
+    for rxn_uid in em_merge.escher_graph['reactions']:
+        seed_id = None
+        cmp = None
+        rxn_node = em_merge.escher_graph['reactions'][rxn_uid]
+        node_uid = get_midmarker_uid(rxn_node, em)
+        if not node_uid == None and node_uid in rxn_uid_to_cluster:
+            for maybe_seed_uid in rxn_uid_to_cluster[node_uid]:
+                n = em.nodes[maybe_seed_uid]
+                if 'rxn_id' in n:
+                    seed_id = n['rxn_id']
+                    rxn_node['name'] = seed_id
+                if 'compartment' in n:
+                    cmp = n['compartment']
+        if not seed_id == None:
+            rxn_remap[rxn_node['bigg_id']] = seed_id
+            if not cmp == None:
+                rxn_remap[rxn_node['bigg_id']] += '_' + cmp      
+                
+    em_merge.swap_ids(cpd_remap, rxn_remap)
+    return em_merge
+    
+            
+            
+    

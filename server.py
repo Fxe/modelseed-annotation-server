@@ -17,7 +17,7 @@ from bios_mock import BIOS_MOCK
 
 from curation_api import CurationApi
 from escher_factory_api import process_build_data_input, EscherFactoryApi
-from escher_grid_merge import generate_integration_report
+from escher_grid_merge import generate_integration_report, merge_with_layer
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
@@ -95,6 +95,13 @@ def escher_cluster_map():
     report = generate_integration_report(cluster_data, escher_manager)
         
     return jsonify(report)
+
+@app.route("/escher/merge", methods=["POST"])
+def escher_merge_map():
+    cluster_data = request.get_json()
+    em_merge = merge_with_layer(cluster_data, escher_manager, modelseed_local)
+        
+    return jsonify(em_merge.escher_map)
 
 
 @app.route("/escher/build/grid", methods=["POST"])
@@ -413,8 +420,8 @@ if __name__ == '__main__':
     aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
     #annotation_api = AnnotationApi(mclient)
     #annotation_api_atlas = AnnotationApi(aclient)
-    mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
-    annotation_api_atlas = CurationApi(mclient, 'test')
+    #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
+    annotation_api_atlas = CurationApi(aclient)
     
     #####      Load ModelSEED     #####
     modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
