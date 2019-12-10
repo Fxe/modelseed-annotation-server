@@ -89,8 +89,8 @@ def get_escher_map(dataset, map_id):
 @app.route("/escher/cluster", methods=["POST"])
 def escher_cluster_map():
     cluster_data = request.get_json()
-    with open('/Users/fliu/workspace/jupyter/data/www/annotation/data/latest_cluster.json', 'w') as f:
-        f.write(json.dumps(cluster_data))
+    #with open('/Users/fliu/workspace/jupyter/data/www/annotation/data/latest_cluster.json', 'w') as f:
+    #    f.write(json.dumps(cluster_data))
         
     report = generate_integration_report(cluster_data, escher_manager)
         

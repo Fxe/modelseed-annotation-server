@@ -134,9 +134,9 @@ def sort_by_database(report, db):
             'database' : {db : list(key)}
         }
         for cmp in m[key]:
-            record[cmp] = {}
+            record['model_data'][cmp] = {}
             for model_id in m[key][cmp]:
-                record[cmp][model_id] = list(m[key][cmp][model_id])
+                record['model_data'][cmp][model_id] = list(m[key][cmp][model_id])
         records.append(record)
         #print(key)
     report['records'] = records
