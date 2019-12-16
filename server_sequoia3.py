@@ -37,6 +37,7 @@ api = Api(app)
 
 CACHE_BASE_FOLDER = '/opt/annotation/data/'
 MODELSEED_FOLDER = '/opt/data/ModelSEEDDatabase'
+CHEMDUST_URL = 'http://172.18.0.4:8080/ChemDUST'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -133,7 +134,7 @@ def build_grid_map():
 def post_biochem_depict(structure_type, output_format):
     data = request.get_json()
     
-    chemdust = ChemDUST()
+    chemdust = ChemDUST(CHEMDUST_URL)
     svg_depict = chemdust.get_depict(data['structure'], structure_type, output_format)
     
     return svg_depict
