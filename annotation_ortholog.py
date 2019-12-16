@@ -157,6 +157,9 @@ class AnnotationOrtholog:
                         self.model_gene_reaction[model_id][g].add(rxn.get_original_id())
     
     def get_ortholog(self, genome_id, gene_id):
+        if not genome_id in self.genome_id_to_ref:
+            return None
+        
         genome_ref = self.genome_id_to_ref[genome_id]
         if genome_ref in self.genome_ref_to_gene_to_ortholog_index and gene_id in self.genome_ref_to_gene_to_ortholog_index[genome_ref]:
             ortholog_index = self.genome_ref_to_gene_to_ortholog_index[genome_ref][gene_id]

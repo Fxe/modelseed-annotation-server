@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 api = Api(app)
 
-CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
-MODELSEED_FOLDER = '/Users/fliu/workspace/jupyter/ModelSEEDDatabase'
+CACHE_BASE_FOLDER = '/opt/annotation/data/'
+MODELSEED_FOLDER = '/opt/data/ModelSEEDDatabase'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -448,7 +448,7 @@ if __name__ == '__main__':
     #####      Load ModelSEED     #####
     modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
     
-    host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
+    host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "111111")
     if len(sys.argv) > 1:
         host = sys.argv[1]
     if len(sys.argv) > 2:

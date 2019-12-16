@@ -9,8 +9,6 @@ RUN git clone https://github.com/ModelSEED/modelseed-escher.git /opt/build/model
 RUN mkdir -p /opt/build
 RUN git clone https://github.com/Fxe/biosapi.git /opt/build/biosapi
 
-
-
 RUN pip install --upgrade pip
 RUN pip install requests
 RUN pip install flask
