@@ -127,7 +127,10 @@ class AnnotationApiNeo4j:
                         'CREATE CONSTRAINT ON (n:{}) ASSERT n.key IS UNIQUE'.format(l)))
                 
     def get_function(self, f):
-        return self.get_node('Function', f)
+        n = self.matcher.match("Function", key=f).first()
+        if n == None:
+            return None
+        return Neo4jAnnotationFunction(n)
                 
     def get_node(self, t, key):
         result = None
@@ -136,6 +139,12 @@ class AnnotationApiNeo4j:
             if len(query) > 0:
                 result = query[0].data()['n']
         return result
+    
+    def get_ko(self, ko_id):
+        n = self.matcher.match("KeggOrthology", key=ko_id).first()
+        if n == None:
+            return None
+        return n
     
     def get_genome(self, genome_id):
         return self.get_node('RefSeqGenome', genome_id)
@@ -587,8 +596,6 @@ class AnnotationApiNeo4j:
         return genome_sets
     
     def get_genome_set(self, genome_set_id):
-        if genome_set_id in GENOME_SET_CACHE:
-            return GENOME_SET_CACHE[genome_set_id]
         m = self.neo4j_graph.nodes.match("GenomeSet", key=genome_set_id)
         if len(m) < 1:
             return None
@@ -599,17 +606,32 @@ class AnnotationApiNeo4j:
         for rel in self.neo4j_graph.match((genome_set_node, ), r_type="has_genome", ):
             genome_id = rel.end_node['key']
             genomes.add(genome_id)
-            
-        GENOME_SET_CACHE[genome_set_id] = genomes
+
         return genomes
 
-    def add_genome_to_genome_set(annotation_api, genome_set_id, genome_id):
-        genome_set_node = annotation_api.get_node('GenomeSet', genome_set_id)
-        genome_node = annotation_api.get_node('RefSeqGenome', genome_id)
+    def add_genome_to_genome_set(self, genome_set_id, genome_id):
+        genome_set_node = self.get_node('GenomeSet', genome_set_id)
+        genome_node = self.get_node('RefSeqGenome', genome_id)
         if genome_set_node == None or genome_node == None:
             return False
-        annotation_api.link_nodes(genome_set_node, genome_node, 'has_genome')
+        self.link_nodes(genome_set_node, genome_node, 'has_genome')
         return True
+        
+    def get_ko_genes(self, ko_id):
+        gene_nodes = None
+        m = self.neo4j_graph.nodes.match("KeggOrthology", key=ko_id)
+        if len(m) < 1:
+            return res
+        ko_node = m.first()
+        gene_nodes = set()
+        #KeggOrthology -[:has_gene]-> Node
+        for rel in self.neo4j_graph.match((ko_node, ), r_type="has_gene", ):
+            n = rel.end_node
+            #gene_data = dict(n)
+            #gene_data['database_id'] = n.identity
+            #print(n.identity, type(n.identity))
+            gene_nodes.add(n.identity)
+        return gene_nodes
         
     def get_functional_roles2(self, ko_id):
         m = self.neo4j_graph.nodes.match("KeggOrthology", key=ko_id)
@@ -660,23 +682,55 @@ class AnnotationApiNeo4j:
             result = session.read_transaction(self._get_template_reaction_data, template_id, rxn_id)
         return result
     
-    def get_reaction_annotation_data(self, rxn_id, example_genes = 10):
+    @staticmethod
+    def filter_genome_set(fcount, genome_set):
+        if genome_set == None:
+            return fcount
+        fcount_filter = {}
+        for source_id in fcount:
+            fcount_filter[source_id] = {
+                'genes' : set(),
+                'genomes' : fcount[source_id]['genomes'] & genome_set,
+            }
+            for gene_id in fcount[source_id]['genes']:
+                a, b = gene_id.split('@')
+                if b in genome_set:
+                    fcount_filter[source_id]['genes'].add(gene_id)
+            #for 'genomes' in fcount[]
+        return fcount_filter
+    
+    def get_reaction_annotation_data(self, rxn_id, genome_set = None, example_genes = 10, manual_ko = {}, manual_function = {}):
         kos = self.get_ko_by_seed_id(rxn_id)
+        
+        #print('get_reaction_annotation_data', rxn_id, len(genome_set), example_genes, manual_ko, manual_function)
+        #print('get_reaction_annotation_data', kos)
+        
+        if kos == None:
+            kos = set()
         function_data = {}
+        for ko in manual_ko:
+            if manual_ko[ko]:
+                o = self.get_node('KeggOrthology', ko)
+                if not o == None:
+                    kos.add(ko)
         for ko in kos:
-            functions, functions_data, metadata = self.get_functional_roles2(ko)
-            print(ko, metadata)
-            for f in functions:
-                function = functions_data[f]['value']
-                if not function in function_data:
-                    function_data[function] = {
-                        'id' : f,
-                        'hits' : []
-                    }
-                function_data[function]['hits'].append({
-                    'score' : len(functions[f]),
-                    'source' : ['KEGG', ko]
-                })
+            if ko in manual_ko and not manual_ko[ko]:
+                print('manual_excluded', ko)
+            else:
+                functions, functions_data, metadata = self.get_functional_roles2(ko)
+                print(ko, metadata)
+                for f in functions:
+                    function = functions_data[f]['value']
+                    if not function in function_data:
+                        function_data[function] = {
+                            'id' : f,
+                            'hits' : []
+                        }
+                    function_data[function]['hits'].append({
+                        'score' : len(functions[f]),
+                        'source' : ['KEGG', ko]
+                    })
+        
 
         #MISSING ADD TEMPLATE DATA
         for template_set in self.page_nodes('TemplateSet', 0, 10):
@@ -718,9 +772,11 @@ class AnnotationApiNeo4j:
             subsystem_tags = {}
             for ss in annotation.function_group:
                 subsystem_tags[ss] = {}
-                
+            
+            logger.debug('get fcount %s', f)
             fcount = self.get_function_count(annotation)
-
+            logger.debug('filter fcount genome set')
+            fcount = self.filter_genome_set(fcount, genome_set)
             source_tags = {}
             for s in fcount:
                 source_tags[s] = [len(fcount[s]['genomes']), 

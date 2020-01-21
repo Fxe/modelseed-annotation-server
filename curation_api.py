@@ -23,6 +23,8 @@ class CurationApi:
     def __init__(self, client, database_id = 'annotation'):
         self.database = client[database_id]
         self.collection_templates_reactions = self.database['templates_reactions']
+        self.collection_templates_reactions_ko = self.database['templates_reactions_manual_ko']
+        self.collection_templates_reactions_function = self.database['templates_reactions_manual_function']
         self.collection_reaction_gene_annotation = self.database['reaction_gene_annotation']
         self.collection_model_reaction_mapping = self.database['model_reaction_mapping']
         self.collection_model_compound_mapping = self.database['model_compound_mapping']
@@ -168,3 +170,76 @@ class CurationApi:
         data = self.collection_model_reaction_mapping.find_one({'_id' : reaction_template_id})
         fix_mongo_object_key(data)
         return data
+    
+    def get_rxn_with_function(self, function_id, template_id):
+        result = {}
+        for doc in self.collection_templates_reactions.find():
+            doc_rxn_id, doc_template_id = doc['_id'].split('@')
+            if doc_template_id == template_id:
+                if 'functions' in doc and str(function_id) in doc['functions']:
+                    result[doc_rxn_id] = doc['functions'][str(function_id)]
+        return result
+    
+    def get_manual_ko(self, reaction_id, template_id):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        data = self.collection_templates_reactions_ko.find_one({'_id' : reaction_template_id})
+        if data == None:
+            return {
+                '_id' : reaction_template_id,
+                'ko' : {},
+                'log' : []
+            }
+        return data
+    
+    def set_manual_ko(self, reaction_id, template_id, ko_id, logic, user_id):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        timestamp = int(time.time())
+
+        #update template
+        doc = self.collection_templates_reactions_ko.find_one({'_id':reaction_template_id})
+        if doc == None:
+            self.collection_templates_reactions_ko.insert_one({
+                '_id' : reaction_template_id,
+                'ko' : {},
+                'log' : []
+            })
+        self.collection_templates_reactions_ko.update_one(
+            {"_id" :reaction_template_id},
+            {'$set' : {"ko." + str(ko_id) : logic}})
+
+        #log action
+        self.collection_templates_reactions_ko.update_one(
+            {'_id' : reaction_template_id}, 
+            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : ko_id}}}, upsert=True)
+        
+    def get_manual_function(self, reaction_id, template_id):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        data = self.collection_templates_reactions_function.find_one({'_id' : reaction_template_id})
+        if data == None:
+            return {
+                '_id' : reaction_template_id,
+                'functions' : {},
+                'log' : []
+            }
+        return data
+        
+    def set_manual_function(self, reaction_id, template_id, function_id, logic, user_id):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        timestamp = int(time.time())
+
+        #update template
+        doc = self.collection_templates_reactions_function.find_one({'_id':reaction_template_id})
+        if doc == None:
+            self.collection_templates_reactions_function.insert_one({
+                '_id' : reaction_template_id,
+                'functions' : {},
+                'log' : []
+            })
+        self.collection_templates_reactions_function.update_one(
+            {"_id" :reaction_template_id},
+            {'$set' : {"functions." + str(function_id) : logic}})
+
+        #log action
+        self.collection_templates_reactions_function.update_one(
+            {'_id' : reaction_template_id}, 
+            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)

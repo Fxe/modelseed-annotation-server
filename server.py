@@ -22,6 +22,7 @@ from escher_grid_merge import generate_integration_report, merge_with_layer
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
+from annotation_api_redis import AnnotationApiRedisCache
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api
@@ -37,7 +38,7 @@ api = Api(app)
 
 CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
 MODELSEED_FOLDER = '/Users/fliu/workspace/jupyter/ModelSEEDDatabase'
-CHEMDUST_URL = 'http://192.168.1.10:8066/ChemDUST'
+CHEMDUST_URL = 'http://0.0.0.0:8066/ChemDUST'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -130,39 +131,6 @@ def build_grid_map():
     #m = escher_manager.get_map('ModelSEED', 'ModelSEED', 'Chorismate Synthesis')
     return jsonify(master.escher_map)
 
-@app.route("/biochem/depict/<structure_type>/<output_format>", methods=["POST"])
-def post_biochem_depict(structure_type, output_format):
-    data = request.get_json()
-    
-    chemdust = ChemDUST(CHEMDUST_URL)
-    svg_depict = chemdust.get_depict(data['structure'], structure_type, output_format)
-    
-    return svg_depict
-
-@app.route("/biochem/calculator/<inchi>/svg", methods=["GET"])
-def translate_inchi_svg(inchi):
-    return ""
-
-@app.route("/biochem/cpd/<id>/svg", methods=["GET"])
-def get_compound_svg(id):
-        
-    return ""
-
-@app.route("/biochem/cpd/<id>", methods=["GET"])
-def get_seed_compound(id):
-    o = modelseed_local.get_seed_compound(id)
-    if not o == None:
-        clear_nan(o.data)
-        return jsonify(o.data)
-    return ""
-
-@app.route("/biochem/rxn/<id>", methods=["GET"])
-def get_seed_reaction(id):
-    o = modelseed_local.get_seed_reaction(id)
-    if not o == None:
-        clear_nan(o.data)
-        return jsonify(o.data)
-    return ""
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["GET"])
 def get_template_reaction(template_id, rxn_id):
@@ -171,6 +139,17 @@ def get_template_reaction(template_id, rxn_id):
     data = annotation_api_atlas.collection_templates_reactions.find_one({'_id' : reaction_template_id})
     print(data)
     return jsonify(data)
+
+@app.route("/template/<template_id>/functions_rxn", methods=["POST"])
+def post_template_function_rxns(template_id):
+    body = request.get_json()
+    result = {}
+    for function_id in body:
+        res = annotation_api_atlas.get_rxn_with_function(function_id, template_id)
+        if res == None:
+            res = {}
+        result[function_id] = res
+    return jsonify(result)
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["POST"])
 def set_annotation_to_template(template_id, rxn_id):
@@ -185,6 +164,62 @@ def set_annotation_to_template(template_id, rxn_id):
         template_id, 
         request.form.get('logic'))
     return ""
+
+
+@app.route("/template/<template_id>/annotation/reaction/<rxn_id>/ko/<ko_id>", methods=["POST"])
+def post_template_annotation_reaction_manual_ko(template_id, rxn_id, ko_id):
+    body = request.get_json()
+    o = annotation_api.get_node('KeggOrthology', ko_id)
+    if not o == None:
+        print(o)
+        annotation_api_atlas.set_manual_ko(rxn_id, template_id, ko_id, True, 'fliu')
+        return jsonify(True)
+    return jsonify(False)
+
+@app.route("/template/<template_id>/annotation/reaction/<rxn_id>/status", methods=["POST"])
+def get_template_annotation_reaction_status(template_id, rxn_id):
+    
+    
+    body = request.get_json()
+    reaction_template_id = '{}@{}'.format(rxn_id, template_id)
+    
+    genome_set = None
+    if 'genome_set_id' in body:
+        genome_set = annotation_api.get_genome_set(body['genome_set_id'])
+        
+    #print('get_template_annotation_reaction_status', 'body', body)
+    #print('get_template_annotation_reaction_status', 'genome_set', genome_set)
+        
+    rxn_annotation_manual_function = annotation_api_atlas.get_manual_function(rxn_id, template_id)
+    rxn_annotation_manual_ko = annotation_api_atlas.get_manual_ko(rxn_id, template_id)
+    
+    #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_function', rxn_annotation_manual_function)
+    #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_ko', rxn_annotation_manual_ko)
+    
+    rxn_annotation = annotation_api.get_reaction_annotation_data(rxn_id, genome_set, 10, 
+                                                                 rxn_annotation_manual_ko['ko'], 
+                                                                 rxn_annotation_manual_function['functions'])
+    rxn_annotation_curation = annotation_api_atlas.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+    
+    rxn_annotation_functions_rxn = {}
+    function_ids = set()
+    for name in rxn_annotation:
+        function_ids.add(rxn_annotation[name]['id'])
+    for function_id in function_ids:
+        res = annotation_api_atlas.get_rxn_with_function(function_id, template_id)
+        if res == None:
+            res = {}
+        rxn_annotation_functions_rxn[function_id] = res
+    
+    return jsonify({
+        'rxn' : {},
+        'cpd' : {},
+        'manual_function' : rxn_annotation_manual_function,
+        'manual_ko' : rxn_annotation_manual_ko,
+        'annotation' : rxn_annotation,
+        'curation' : rxn_annotation_curation,
+        'function_rxns' : rxn_annotation_functions_rxn
+    })
 
 @app.route("/template/<template_id>/reaction/<rxn_id>/gene", methods=["POST"])
 def post_template_reaction_gene_annotation(template_id, rxn_id):
@@ -310,6 +345,11 @@ def list_model_reactions(id):
     
     return jsonify(resp)
 
+@app.route("/genome/kbase/<id>", methods=["PUT"])
+def put_genome_from_kbase(id):
+    data = request.get_json()
+    return jsonify(data)
+
 def get_functional_roles(ko_id):
     functions = {}
     doc = mdb_kbase_ko_to_genes.find_one({'_id' : ko_id})
@@ -429,22 +469,22 @@ bios = None
   
 if __name__ == '__main__':
     
-    #bios = biosapi.BIOS()
-    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
+    bios = biosapi.BIOS()
+    #bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
     with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
         MODEL_CPD_MAPPING = json.loads(f.read())
     with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:
         MODEL_RXN_MAPPING = json.loads(f.read())
         
     escher_manager = modelseed_escher.EscherManager(escher)
-    #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
+    mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
     #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
-    aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
+    #aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
     #annotation_api = AnnotationApi(mclient)
     #annotation_api_atlas = AnnotationApi(aclient)
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
-    annotation_api_atlas = CurationApi(aclient)
+    annotation_api_atlas = CurationApi(mclient)
     
     #####      Load ModelSEED     #####
     modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
@@ -455,18 +495,24 @@ if __name__ == '__main__':
     if len(sys.argv) > 2:
         pwd = sys.argv[2]
         
-    annotation_api = AnnotationApiNeo4j(user=user, pwd=pwd, port=port, host=host)
+    #annotation_api = AnnotationApiNeo4j(user=user, pwd=pwd, port=port, host=host)
+    cache = redis.Redis(host='localhost', port=6379, db=0)
+    annotation_api = AnnotationApiRedisCache(cache, user=user, pwd=pwd, port=port, host=host)
+
     annotation_api.neo4j_graph = Graph("http://neo4j:" + pwd + "@" + host + ":7474")
     annotation_api.matcher = NodeMatcher(annotation_api.neo4j_graph)
     annotation_api.r_matcher = RelationshipMatcher(annotation_api.neo4j_graph)
     annotation_api.init_constraints()
     
-    kbase = cobrakbase.KBaseAPI('UGOG6KLAWTCYI2ASYECYHNIIFTEXGA2J')
+    kbase = cobrakbase.KBaseAPI('64XQ7SABQILQWSEW3CQKZXJA63DXZBGH')
     annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
     annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
     annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
     #print(escher_manager.escher.get_cache_dir())
     #app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
     #print(app.config)
+    
+    import controller_biochem
+    
     app.run(port=8058, host='0.0.0.0', debug=False)
     

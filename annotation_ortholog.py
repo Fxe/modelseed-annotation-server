@@ -7,20 +7,22 @@ from cobra.core.gene import Gene, ast2str, eval_gpr, parse_gpr
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_GENOMES = ['GCF_000209165.1',
- 'GCF_000182925.2',
- 'GCF_000002525.2',
- 'GCF_000184455.2',
- 'GCF_000149615.1',
- 'GCF_000226395.1',
- 'GCF_000002515.2',
- 'GCF_000027005.1',
- 'GCF_000006335.2',
- 'GCF_000146045.2',
- 'GCF_000091025.4',
- 'GCF_000002545.3',
- 'Mucor_circinelloides_CBS277.49_v2.0',
- 'GCF_000002855.3']
+ACTIVE_GENOMES = [
+    'GCF_000209165.1',
+ #'GCF_000182925.2',
+ #'GCF_000002525.2',
+ #'GCF_000184455.2',
+ #'GCF_000149615.1',
+ #'GCF_000226395.1',
+ #'GCF_000002515.2',
+ #'GCF_000027005.1',
+ #'GCF_000006335.2',
+ #'GCF_000146045.2',
+ #'GCF_000091025.4',
+ #'GCF_000002545.3',
+ #'Mucor_circinelloides_CBS277.49_v2.0',
+ #'GCF_000002855.3'
+                 ]
 
 def read_json(filename):
     data = None
@@ -58,27 +60,27 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
         
     ws_fungi = 'jplfaria:narrative_1510597445008'
     model_ids = [
-        'iNL895_KBase2',
-        'iCT646_KBase2',
+        #'iNL895_KBase2',
+        #'iCT646_KBase2',
 
         'iMM904_KBase3',
-        'iTO977_KBase2',
-        'iSS884_KBase2',
-        'iLC915_KBase2',
+        #'iTO977_KBase2',
+        #'iSS884_KBase2',
+        #'iLC915_KBase2',
 
-        'iWV1213_KBase2',
-        'iAL1006_KBase3',
+        #'iWV1213_KBase2',
+        #'iAL1006_KBase3',
 
-        'iRL766_KBase2',
-        'iMA871_KBase2',
+        #'iRL766_KBase2',
+        #'iMA871_KBase2',
 
-        'iJDZ836_KBase3',
-        'iWV1314_KBase2',
-        'iOD907_KBase2',
-        'iJL1454_KBase2',
-        'iNX804_KBase2',
-        'yeast_6.06_KBase2',
-        'yeast_7.6_KBase2',
+        #'iJDZ836_KBase3',
+        #'iWV1314_KBase2',
+        #'iOD907_KBase2',
+        #'iJL1454_KBase2',
+        #'iNX804_KBase2',
+        #'yeast_6.06_KBase2',
+        #'yeast_7.6_KBase2',
     ]
     kbase_models = {}
     for model_id in model_ids:

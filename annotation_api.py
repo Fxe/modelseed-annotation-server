@@ -281,6 +281,14 @@ class AnnotationApi:
             print('!')
 
             
+    def get_template_reaction_function_score(self, reaction_id, template_id, function_id):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        o = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        #print(o['functions'])
+        if not o == None and 'functions' in o and str(function_id) in o['functions']:
+            return o['functions'][str(function_id)]
+        return None
+            
     def add_function_to_template_rxn(self, function_id, reaction_id, user_id, template_id, logic):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
 
@@ -302,3 +310,4 @@ class AnnotationApi:
         self.collection_templates_reactions.update_one(
             {'_id' : reaction_template_id}, 
             {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)
+        
