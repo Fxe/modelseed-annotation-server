@@ -15,7 +15,7 @@ import modelseed_escher
 import biosapi
 from bios_mock import BIOS_MOCK
 
-from chemdust_api_temp import ChemDUST
+
 from curation_api import CurationApi
 from escher_factory_api import process_build_data_input, EscherFactoryApi
 from escher_grid_merge import generate_integration_report, merge_with_layer
@@ -26,6 +26,7 @@ from annotation_api_redis import AnnotationApiRedisCache
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api
+from flask_cors import CORS
 
 #class (Resource):
 #    def get(self):
@@ -34,6 +35,7 @@ from flask_restful import Resource, Api
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app)
 api = Api(app)
 
 CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
@@ -211,8 +213,12 @@ def get_template_annotation_reaction_status(template_id, rxn_id):
             res = {}
         rxn_annotation_functions_rxn[function_id] = res
     
+    rxn = modelseed_local.get_seed_reaction(rxn_id)
+    if rxn == None:
+        rxn = {}
+        
     return jsonify({
-        'rxn' : {},
+        'rxn' : {rxn_id : clear_nan(rxn.data)},
         'cpd' : {},
         'manual_function' : rxn_annotation_manual_function,
         'manual_ko' : rxn_annotation_manual_ko,
@@ -469,8 +475,8 @@ bios = None
   
 if __name__ == '__main__':
     
-    bios = biosapi.BIOS()
-    #bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
+    #bios = biosapi.BIOS()
+    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
     with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
         MODEL_CPD_MAPPING = json.loads(f.read())
     with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:

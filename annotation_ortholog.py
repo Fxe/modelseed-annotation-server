@@ -47,8 +47,8 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
 
     for genome_ref in ortho['genome_refs']:
         info = kbase.get_object_info_from_ref(genome_ref)
-        genome_data = read_json(annotation_path + info.id + '.json')
-        #genome_data = kbase.get_object(info.id, info.workspace_id)
+        #genome_data = read_json(annotation_path + info.id + '.json')
+        genome_data = kbase.get_object(info.id, info.workspace_id)
         genome = cobrakbase.core.KBaseGenome(genome_data)
         print(info.id, info.workspace_id)
         ref_to_genome[genome_ref] = genome

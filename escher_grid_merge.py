@@ -1,5 +1,5 @@
 import copy
-from modelseed_escher.convert_utils import add_compartment
+from modelseed_escher.convert_utils import add_compartment, move_to_compartment
 from modelseed_escher.core import EscherMap
 from modelseed_escher.map import EscherCluster
 
