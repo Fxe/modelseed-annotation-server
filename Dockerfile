@@ -24,7 +24,7 @@ RUN pip install cobrakbase==0.2.2
 RUN pip install Escher==1.6.0
 RUN pip install /opt/build/modelseed-escher
 RUN pip install /opt/build/biosapi
-
+RUN pip install flask-cors
 
 COPY . /opt/annotation
 COPY entrypoint.sh /
