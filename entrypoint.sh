@@ -1,3 +1,3 @@
 #!/bin/sh
-
-python /opt/annotation/server.py $@
+cd /opt/annotation
+python server.py $@
