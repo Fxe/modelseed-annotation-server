@@ -25,6 +25,8 @@ RUN pip install Escher==1.6.0
 RUN pip install /opt/build/modelseed-escher
 RUN pip install /opt/build/biosapi
 RUN pip install flask-cors
+RUN pip install yaml
+
 
 COPY . /opt/annotation
 COPY entrypoint.sh /
