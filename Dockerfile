@@ -26,7 +26,7 @@ RUN pip install /opt/build/modelseed-escher
 RUN pip install /opt/build/biosapi
 RUN pip install flask-cors
 RUN pip install pyyaml
-
+RUN pip install jsonpickle
 
 COPY . /opt/annotation
 COPY entrypoint.sh /
