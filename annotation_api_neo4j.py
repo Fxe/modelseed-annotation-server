@@ -699,26 +699,15 @@ class AnnotationApiNeo4j:
             #for 'genomes' in fcount[]
         return fcount_filter
     
-    def get_reaction_annotation_data(self, rxn_id, genome_set = None, example_genes = 10, manual_ko = {}, manual_function = {}):
-        kos = self.get_ko_by_seed_id(rxn_id)
-        
-        #print('get_reaction_annotation_data', rxn_id, len(genome_set), example_genes, manual_ko, manual_function)
-        #print('get_reaction_annotation_data', kos)
-        
-        if kos == None:
-            kos = set()
+    def get_ko_function_data(self, kos, manual_ko):
+        logger.debug("%s::get_ko_function_data", self)
         function_data = {}
-        for ko in manual_ko:
-            if manual_ko[ko]:
-                o = self.get_node('KeggOrthology', ko)
-                if not o == None:
-                    kos.add(ko)
         for ko in kos:
             if ko in manual_ko and not manual_ko[ko]:
                 print('manual_excluded', ko)
             else:
                 functions, functions_data, metadata = self.get_functional_roles2(ko)
-                print(ko, metadata)
+                logger.warning('get_ko_function_data: %s:%s', ko, metadata)
                 for f in functions:
                     function = functions_data[f]['value']
                     if not function in function_data:
@@ -730,7 +719,131 @@ class AnnotationApiNeo4j:
                         'score' : len(functions[f]),
                         'source' : ['KEGG', ko]
                     })
+        return function_data
+    
+    def get_ko_function_data3(self, kos):
+        logger.debug("%s::get_ko_function_data3", self)
+        function_data = {}
+        for ko in kos:
+            functions, functions_data, metadata = self.get_functional_roles2(ko)
+            logger.debug('get_ko_function_data: %s:%s', ko, metadata)
+            for f in functions:
+                function = functions_data[f]['value']
+                if not function in function_data:
+                    function_data[function] = {
+                        'id' : f,
+                        'hits' : []
+                    }
+                function_data[function]['hits'].append({
+                    'score' : len(functions[f]),
+                    'source' : ['KEGG', ko]
+                })
+        return function_data
+    
+    def get_reaction_annotation_data3_2(self, rxn_id, kos, 
+                                        genome_set_id = None, genome_set = None, example_genes = 10):
+        function_data = self.get_ko_function_data3(kos)
         
+        #MISSING ADD TEMPLATE DATA
+        for template_set in self.page_nodes('TemplateSet', 0, 10):
+            template_id = template_set['n']['key']
+            res = self.get_template_reaction_data(template_id, rxn_id)
+            for r in res:
+                #print('pair', r['n2']['key'])
+                node = self.neo4j_graph.nodes[r['n2'].id]
+                for rel in self.neo4j_graph.match((node, ), r_type="has_function", ):
+                    if rel.end_node.has_label('FunctionComplex'):
+                        for rel_cpx in self.neo4j_graph.match((rel.end_node, ), r_type="has_function", ):
+                            function = Neo4jAnnotationFunction(rel_cpx.end_node)
+                            if not function.value in function_data:
+                                function_data[function.value] = {
+                                    'id' : function.id,
+                                    'hits' : []
+                                }
+                            function_data[function.value]['hits'].append({
+                                'score' : 0,
+                                'source' : ['template', template_id]
+                            })
+                    else:
+                        function = Neo4jAnnotationFunction(rel.end_node)
+                        if not function.value in function_data:
+                            function_data[function.value] = {
+                                'id' : function.id,
+                                'hits' : []
+                            }
+                        function_data[function.value]['hits'].append({
+                            'score' : 0,
+                            'source' : ['template', template_id]
+                        })
+                        
+        #MISSING ADD SBML DATA
+
+        for f in function_data:
+            node = self.matcher.match("Function", key=f).first()
+            annotation = Neo4jAnnotationFunction(node)
+
+            subsystem_tags = {}
+            for ss in annotation.function_group:
+                subsystem_tags[ss] = {}
+            
+            logger.debug('get fcount %s', f)
+            fcount = self.get_function_count(annotation)
+            logger.debug('filter fcount genome set')
+            fcount = self.filter_genome_set(fcount, genome_set)
+            source_tags = {}
+            for s in fcount:
+                source_tags[s] = [len(fcount[s]['genomes']), 
+                                  len(fcount[s]['genes']), 
+                                  list(fcount[s]['genes'])[:example_genes]]
+
+            function_data[f]['sources'] = source_tags
+            function_data[f]['subsystems'] = subsystem_tags
+
+        return function_data
+    
+    def get_reaction_annotation_data3(self, rxn_id, genome_set_id = None, example_genes = 10, 
+                                      manual_ko = {}, manual_function = {}):
+        
+        genome_set = None
+        if not genome_set_id == None:
+            genome_set = self.get_genome_set(genome_set_id)
+        
+        selected_kos = set()
+        
+        rxn_kos = self.get_ko_by_seed_id(rxn_id)
+        if rxn_kos == None:
+            rxn_kos = set()
+        selected_kos |= rxn_kos
+        
+        for ko in manual_ko:
+            if manual_ko[ko]:
+                o = self.get_node('KeggOrthology', ko)
+                if not o == None:
+                    selected_kos.add(ko)
+            elif ko in selected_kos:
+                selected_kos.remove(ko)
+        
+        function_data = self.get_reaction_annotation_data3_2(rxn_id, selected_kos, genome_set_id, genome_set, example_genes)
+        return function_data
+        
+    
+        
+    def get_reaction_annotation_data(self, rxn_id, genome_set = None, example_genes = 10, manual_ko = {}, manual_function = {}):
+        kos = self.get_ko_by_seed_id(rxn_id)
+        
+        #print('get_reaction_annotation_data', rxn_id, len(genome_set), example_genes, manual_ko, manual_function)
+        #print('get_reaction_annotation_data', kos)
+        
+        if kos == None:
+            kos = set()
+        
+        for ko in manual_ko:
+            if manual_ko[ko]:
+                o = self.get_node('KeggOrthology', ko)
+                if not o == None:
+                    kos.add(ko)
+
+        function_data = self.get_ko_function_data(kos, manual_ko)
 
         #MISSING ADD TEMPLATE DATA
         for template_set in self.page_nodes('TemplateSet', 0, 10):

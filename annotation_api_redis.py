@@ -1,4 +1,6 @@
 import logging
+import json
+import jsonpickle
 from annotation_api_neo4j import AnnotationApiNeo4j
 from neo4j import GraphDatabase
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
@@ -18,7 +20,22 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
             self.matcher = NodeMatcher(self.neo4j_graph)
         self.cache = cache
         
+    def set_cache(self, cache_key, data, expire_sec = 86400):
+        logger.debug('set_cache [%s]', cache_key)
+        if data == None or len(data) == 0:
+            return False
+        self.cache.set(cache_key, jsonpickle.encode(data))
+        return self.cache.expire(cache_key, expire_sec)
+    
+    def get_cache(self, cache_key):
+        logger.debug('get_cache [%s]', cache_key)
+        data = self.cache.get(cache_key)
+        if not data:
+            return None
+        return jsonpickle.decode(data.decode('utf-8'))
+        
     def get_cache_get_function_count(self, gene_function):
+        logger.debug('get_cache_get_function_count [%s]', gene_function.id)
         cache_key = 'neo4j:' + str(gene_function.id)
         data = self.cache.hgetall(cache_key)
         if len(data) == 0:
@@ -45,7 +62,7 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
         return self.cache.expire(cache_key, expire_sec)
     
     def get_function_count(self, annotation):
-        logger.debug('cache lookup')
+        logger.debug('get_function_count::cache lookup')
         res = self.get_cache_get_function_count(annotation)
         if res:
             logger.debug('cache return')
@@ -74,15 +91,65 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
         return self.cache.expire(cache_key, expire_sec)
     
     def get_genome_set(self, genome_set_id):
-        logger.debug('cache lookup')
+        if genome_set_id == None:
+            return None
+        logger.debug('get_genome_set::cache lookup')
         res = self.get_cache_get_genome_set(genome_set_id)
         if res:
-            logger.debug('cache return')
+            logger.debug('get_genome_set::cache return')
             return res
         
-        logger.debug('cache not found get live')
+        logger.debug('get_genome_set::cache not found get live')
         res = super().get_genome_set(genome_set_id)
         
-        logger.debug('cache live data')
+        logger.debug('get_genome_set::cache live data')
         self.set_cache_get_genome_set(genome_set_id, res)
+        return res
+            
+    def get_ko_function_data(self, kos, manual_ko):
+        logger.debug('get_ko_function_data::cache lookup')
+        cache_key = 'ko_function_data::' + '#'.join(sorted(kos))
+        res = self.get_cache(cache_key)
+        if res:
+            logger.debug('get_ko_function_data::cache return')
+            return res
+        
+        logger.debug('get_ko_function_data::cache not found get live')
+        res = super().get_ko_function_data(kos, manual_ko)
+        
+        logger.debug('get_ko_function_data::cache live data')
+        self.set_cache(cache_key, res)
+        return res
+    
+    def get_functional_roles2(self, ko):
+        logger.debug('get_functional_roles2::cache lookup')
+        cache_key = 'get_functional_roles2$' + ko
+        res = self.get_cache(cache_key)
+        if res:
+            logger.debug('get_functional_roles2::cache return')
+            return res
+        
+        logger.debug('get_functional_roles2::cache not found get live')
+        res = super().get_functional_roles2(ko)
+        
+        logger.debug('get_functional_roles2::cache live data')
+        self.set_cache(cache_key, res)
+        return res
+    
+    def get_reaction_annotation_data3_2(self, rxn_id, kos, 
+                                        genome_set_id = None, genome_set = None, example_genes = 10):
+        logger.debug('get_reaction_annotation_data3_2::cache lookup')
+        genome_set_id_str = 'None' if genome_set_id == None else genome_set_id
+        cache_key = 'get_reaction_annotation_data3_2${}:{}:{}:{}'.format(rxn_id, '#'.join(kos), genome_set_id_str, example_genes)
+        res = self.get_cache(cache_key)
+        if res:
+            logger.debug('get_reaction_annotation_data3_2::cache return')
+            return res
+        
+        logger.debug('get_reaction_annotation_data3_2::cache not found get live')
+        res = super().get_reaction_annotation_data3_2(rxn_id, kos, 
+                                                      genome_set_id, genome_set, example_genes)
+        
+        logger.debug('get_reaction_annotation_data3_2::cache live data')
+        self.set_cache(cache_key, res)
         return res

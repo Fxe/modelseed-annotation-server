@@ -171,13 +171,18 @@ class CurationApi:
         fix_mongo_object_key(data)
         return data
     
+    
+    
     def get_rxn_with_function(self, function_id, template_id):
         result = {}
-        for doc in self.collection_templates_reactions.find():
-            doc_rxn_id, doc_template_id = doc['_id'].split('@')
-            if doc_template_id == template_id:
-                if 'functions' in doc and str(function_id) in doc['functions']:
-                    result[doc_rxn_id] = doc['functions'][str(function_id)]
+        doc = self.database['template_' + template_id].find_one({'_id' : str(function_id)})
+        if not doc == None and 'mapping' in doc:
+            result = doc['mapping']
+        #for doc in self.collection_templates_reactions.find():
+        #    doc_rxn_id, doc_template_id = doc['_id'].split('@')
+        #    if doc_template_id == template_id:
+        #        if 'functions' in doc and str(function_id) in doc['functions']:
+        #            result[doc_rxn_id] = doc['functions'][str(function_id)]
         return result
     
     def get_manual_ko(self, reaction_id, template_id):

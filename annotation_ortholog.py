@@ -2,6 +2,7 @@ import logging
 import json
 import copy
 import cobrakbase
+import os
 from cobrakbase.core import KBaseFBAModel
 from cobra.core.gene import Gene, ast2str, eval_gpr, parse_gpr
 
@@ -47,8 +48,13 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
 
     for genome_ref in ortho['genome_refs']:
         info = kbase.get_object_info_from_ref(genome_ref)
-        #genome_data = read_json(annotation_path + info.id + '.json')
-        genome_data = kbase.get_object(info.id, info.workspace_id)
+        genome_data = None
+        if os.path.exists(annotation_path + info.id + '.json'):
+            print('load local', genome_ref)
+            genome_data = read_json(annotation_path + info.id + '.json')
+        else:
+            print('load kbase', genome_ref)
+            genome_data = kbase.get_object(info.id, info.workspace_id)
         genome = cobrakbase.core.KBaseGenome(genome_data)
         print(info.id, info.workspace_id)
         ref_to_genome[genome_ref] = genome

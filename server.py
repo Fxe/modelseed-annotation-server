@@ -2,6 +2,8 @@ import sys
 import json
 import logging
 import pandas as pd
+import time
+import yaml
 
 import redis
 import pymongo
@@ -38,9 +40,6 @@ app = Flask(__name__)
 CORS(app)
 api = Api(app)
 
-CACHE_BASE_FOLDER = '/Users/fliu/workspace/jupyter/python3/annotation-server/data/'
-MODELSEED_FOLDER = '/Users/fliu/workspace/jupyter/ModelSEEDDatabase'
-CHEMDUST_URL = 'http://0.0.0.0:8066/ChemDUST'
 HUGE_CACHE = {}
 
 def clear_nan(d):
@@ -180,27 +179,38 @@ def post_template_annotation_reaction_manual_ko(template_id, rxn_id, ko_id):
 
 @app.route("/template/<template_id>/annotation/reaction/<rxn_id>/status", methods=["POST"])
 def get_template_annotation_reaction_status(template_id, rxn_id):
-    
+    t1 = time.time()
     
     body = request.get_json()
     reaction_template_id = '{}@{}'.format(rxn_id, template_id)
     
-    genome_set = None
-    if 'genome_set_id' in body:
-        genome_set = annotation_api.get_genome_set(body['genome_set_id'])
-        
+    #genome_set = None
+    genome_set_id = None
+    if 'genome_set_id' in body and len(body['genome_set_id']) > 0:
+        genome_set_id = body['genome_set_id']
+        #genome_set = annotation_api.get_genome_set(body['genome_set_id'])
+    
+    
+    t2 = time.time()
+    
     #print('get_template_annotation_reaction_status', 'body', body)
     #print('get_template_annotation_reaction_status', 'genome_set', genome_set)
         
     rxn_annotation_manual_function = annotation_api_atlas.get_manual_function(rxn_id, template_id)
     rxn_annotation_manual_ko = annotation_api_atlas.get_manual_ko(rxn_id, template_id)
     
+    
+    t3 = time.time()
     #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_function', rxn_annotation_manual_function)
     #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_ko', rxn_annotation_manual_ko)
     
-    rxn_annotation = annotation_api.get_reaction_annotation_data(rxn_id, genome_set, 10, 
-                                                                 rxn_annotation_manual_ko['ko'], 
-                                                                 rxn_annotation_manual_function['functions'])
+    rxn_annotation = annotation_api.get_reaction_annotation_data3(
+        rxn_id, genome_set_id, 10, 
+        rxn_annotation_manual_ko['ko'],
+        rxn_annotation_manual_function['functions'])
+    
+    t4 = time.time()
+    
     rxn_annotation_curation = annotation_api_atlas.collection_templates_reactions.find_one({'_id' : reaction_template_id})
     
     rxn_annotation_functions_rxn = {}
@@ -213,11 +223,22 @@ def get_template_annotation_reaction_status(template_id, rxn_id):
             res = {}
         rxn_annotation_functions_rxn[function_id] = res
     
+    t5 = time.time()
+    
     rxn = modelseed_local.get_seed_reaction(rxn_id)
     if rxn == None:
         rxn = {}
         
-    return jsonify({
+    t6 = time.time()
+    
+    print('get_template_annotation_reaction_status::genome_set', round(t2 - t1, 6))
+    print('get_template_annotation_reaction_status::atlas', round(t3 - t2, 6))
+    print('get_template_annotation_reaction_status::get_reaction_annotation_data', round(t4 - t3, 6))
+    print('get_template_annotation_reaction_status::atlas again', round(t5 - t4, 6))
+    print('get_template_annotation_reaction_status::modelseed_local', round(t6 - t5, 6))
+    print('get_template_annotation_reaction_status::TOTAL', round(t6 - t1, 6))
+    
+    response = {
         'rxn' : {rxn_id : clear_nan(rxn.data)},
         'cpd' : {},
         'manual_function' : rxn_annotation_manual_function,
@@ -225,7 +246,12 @@ def get_template_annotation_reaction_status(template_id, rxn_id):
         'annotation' : rxn_annotation,
         'curation' : rxn_annotation_curation,
         'function_rxns' : rxn_annotation_functions_rxn
-    })
+    }
+    
+    response = json.loads(json.dumps(response))
+    #print(response)
+    
+    return jsonify(response)
 
 @app.route("/template/<template_id>/reaction/<rxn_id>/gene", methods=["POST"])
 def post_template_reaction_gene_annotation(template_id, rxn_id):
@@ -474,35 +500,48 @@ MODEL_RXN_MAPPING = None
 bios = None
   
 if __name__ == '__main__':
-    
-    #bios = biosapi.BIOS()
-    bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
-    with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
-        MODEL_CPD_MAPPING = json.loads(f.read())
-    with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:
-        MODEL_RXN_MAPPING = json.loads(f.read())
+    with open('config.yaml', 'r') as config_h:    
+        config = yaml.load(config_h, Loader=yaml.FullLoader)
+        
+        CACHE_BASE_FOLDER = config['cache']
+        MODELSEED_FOLDER = config['modelseed']['path']
+        CHEMDUST_URL = config['chemapi']
+        #CHEMDUST_URL = 'http://192.168.1.19:8080/ChemDUST'
+        
+        #bios = biosapi.BIOS()
+        bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
+        with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
+            MODEL_CPD_MAPPING = json.loads(f.read())
+        with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:
+            MODEL_RXN_MAPPING = json.loads(f.read())
         
     escher_manager = modelseed_escher.EscherManager(escher)
-    mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
+    #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
     #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
-    #aclient = pymongo.MongoClient("mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority")
+    aclient = pymongo.MongoClient(config['mongo_client'])
     #annotation_api = AnnotationApi(mclient)
-    #annotation_api_atlas = AnnotationApi(aclient)
+    annotation_api_atlas = CurationApi(aclient)
     #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
-    annotation_api_atlas = CurationApi(mclient)
+    #annotation_api_atlas = CurationApi(mclient)
     
     #####      Load ModelSEED     #####
     modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
     
-    host, port, user, pwd = ("0.0.0.0", 7687, "neo4j", "123585")
+    host, port, user, pwd = (config['neo4j']['host'], 
+                             config['neo4j']['port'], 
+                             config['neo4j']['user'], 
+                             config['neo4j']['password'])
     if len(sys.argv) > 1:
         host = sys.argv[1]
     if len(sys.argv) > 2:
         pwd = sys.argv[2]
         
     #annotation_api = AnnotationApiNeo4j(user=user, pwd=pwd, port=port, host=host)
-    cache = redis.Redis(host='localhost', port=6379, db=0)
+    cache = redis.Redis(host=config['redis']['host'], 
+                        port=config['redis']['port'], 
+                        db=config['redis']['db'])
+    #cache = redis.Redis(host='192.168.1.19', port=6379, db=0) #TK
     annotation_api = AnnotationApiRedisCache(cache, user=user, pwd=pwd, port=port, host=host)
 
     annotation_api.neo4j_graph = Graph("http://neo4j:" + pwd + "@" + host + ":7474")
@@ -510,10 +549,11 @@ if __name__ == '__main__':
     annotation_api.r_matcher = RelationshipMatcher(annotation_api.neo4j_graph)
     annotation_api.init_constraints()
     
-    kbase = cobrakbase.KBaseAPI('64XQ7SABQILQWSEW3CQKZXJA63DXZBGH')
+    kbase = cobrakbase.KBaseAPI(config['kbase']['token'])
     annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
     annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
     annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
+    
     #print(escher_manager.escher.get_cache_dir())
     #app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
     #print(app.config)
