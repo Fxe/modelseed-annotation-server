@@ -506,7 +506,6 @@ if __name__ == '__main__':
         CACHE_BASE_FOLDER = config['cache']
         MODELSEED_FOLDER = config['modelseed']['path']
         CHEMDUST_URL = config['chemapi']
-        #CHEMDUST_URL = 'http://192.168.1.19:8080/ChemDUST'
         
         #bios = biosapi.BIOS()
         bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
@@ -541,7 +540,7 @@ if __name__ == '__main__':
     cache = redis.Redis(host=config['redis']['host'], 
                         port=config['redis']['port'], 
                         db=config['redis']['db'])
-    #cache = redis.Redis(host='192.168.1.19', port=6379, db=0) #TK
+
     annotation_api = AnnotationApiRedisCache(cache, user=user, pwd=pwd, port=port, host=host)
 
     annotation_api.neo4j_graph = Graph("http://neo4j:" + pwd + "@" + host + ":7474")

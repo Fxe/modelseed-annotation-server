@@ -1,14 +1,15 @@
-chemapi: "http://0.0.0.0:8066/ChemDUST"
+chemapi: "http://192.168.1.19:8080/ChemDUST"
 modelseed:
     path: "/Users/fliu/workspace/jupyter/ModelSEEDDatabase"
 cache: "/Users/fliu/workspace/jupyter/python3/annotation-server/data/"
+mongo_client: "mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority"
 neo4j:
     host: "0.0.0.0"
     port: 7687
     user: "neo4j"
     password: "123585"
 redis:
-    host: 'localhost'
+    host: '192.168.1.19'
     port: 6379
     db: 0
 kbase:

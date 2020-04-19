@@ -1,4 +1,4 @@
-chemapi: "http://172.18.0.4:8066/ChemDUST"
+chemapi: "http://172.18.0.4:8080/ChemDUST"
 modelseed:
     path: "/opt/data/ModelSEEDDatabase"
 cache: "/opt/annotation/data/"
