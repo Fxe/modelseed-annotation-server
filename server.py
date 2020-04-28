@@ -46,6 +46,11 @@ def clear_nan(d):
     for k in d:
         if type(d[k]) == float and pd.isna(d[k]):
             d[k] = ""
+
+@app.route("/reload_temp", methods=["GET"])
+def reload():
+    bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING = load_cache_data(CACHE_BASE_FOLDER)
+    return jsonify('yes!')
     
 @app.route("/status", methods=["GET"])
 def status():
@@ -118,8 +123,10 @@ def build_grid_map():
     print(map_assembly)
     
     escher_factory = EscherFactoryApi(escher_manager)
+    escher_factory.model_path = CACHE_BASE_FOLDER
     escher_factory.cpd_mapping = MODEL_CPD_MAPPING
     escher_factory.rxn_mapping = MODEL_RXN_MAPPING
+    escher_factory.cmp_mapping = MODEL_CMP_MAPPING
     escher_factory.bios_cache = bios.model_data
     
     master = escher_factory.build_grid(map_assembly, (grid_x, grid_y))
@@ -497,8 +504,23 @@ annotation_api = None
 annotation_orth = None
 MODEL_CPD_MAPPING = None
 MODEL_RXN_MAPPING = None
+MODEL_CMP_MAPPING = None
+CACHE_BASE_FOLDER = None
 bios = None
-  
+
+def load_cache_data(folder):
+    bios = BIOS_MOCK(folder + 'bios_cache_fungi.json')
+    MODEL_CPD_MAPPING = None
+    MODEL_RXN_MAPPING = None
+    MODEL_CMP_MAPPING = None
+    with open(folder + 'cpd_mapping_cache4.json', 'r') as f:
+        MODEL_CPD_MAPPING = json.loads(f.read())
+    with open(folder + 'rxn_mapping_cache4.json', 'r') as f:
+        MODEL_RXN_MAPPING = json.loads(f.read())
+    with open(folder + 'cmp_mapping_cache.json', 'r') as f:
+        MODEL_CMP_MAPPING = json.loads(f.read())
+    return bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING
+
 if __name__ == '__main__':
     with open('config.yaml', 'r') as config_h:    
         config = yaml.load(config_h, Loader=yaml.FullLoader)
@@ -508,11 +530,16 @@ if __name__ == '__main__':
         CHEMDUST_URL = config['chemapi']
         
         #bios = biosapi.BIOS()
+        bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING = load_cache_data(CACHE_BASE_FOLDER)
+        """
         bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
         with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
             MODEL_CPD_MAPPING = json.loads(f.read())
         with open(CACHE_BASE_FOLDER + 'rxn_mapping_cache4.json', 'r') as f:
             MODEL_RXN_MAPPING = json.loads(f.read())
+        with open(CACHE_BASE_FOLDER + 'cmp_mapping_cache.json', 'r') as f:
+            MODEL_CMP_MAPPING = json.loads(f.read())
+        """
         
     escher_manager = modelseed_escher.EscherManager(escher)
     #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
