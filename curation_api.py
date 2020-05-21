@@ -32,6 +32,15 @@ class CurationApi:
     def server_info(self):
         return self.database.client.server_info()
     
+    def initialize_empty_template_reaction_record(self, reaction_template_id):
+        self.collection_templates_reactions.insert_one({
+            '_id' : reaction_template_id,
+            'functions' : {},
+            'log' : [],
+            'comments' : [],
+            'attributes' : {}
+        })
+    
     def add_function_to_template_rxn(self, function_id, reaction_id, user_id, template_id, logic):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
 
@@ -40,11 +49,8 @@ class CurationApi:
         #update template
         doc = self.collection_templates_reactions.find_one({'_id':reaction_template_id})
         if doc == None:
-            self.collection_templates_reactions.insert_one({
-                '_id' : reaction_template_id,
-                'functions' : {},
-                'log' : []
-            })
+            self.initialize_empty_template_reaction_record(reaction_template_id)
+            
         self.collection_templates_reactions.update_one(
             {"_id" :reaction_template_id},
             {'$set' : {"functions." + str(function_id) : logic}})
@@ -248,3 +254,53 @@ class CurationApi:
         self.collection_templates_reactions_function.update_one(
             {'_id' : reaction_template_id}, 
             {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)
+        
+    def add_template_reaction_comment(self, reaction_id, template_id, user_id, comment):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        timestamp = int(time.time())
+        
+        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        if doc == None:
+            self.initialize_empty_template_reaction_record(reaction_template_id)
+                
+        self.collection_templates_reactions.update_one(
+            {'_id' : reaction_template_id},
+            {'$push' : {'comments' : {'timestamp' : timestamp, 'user_id' : user_id, 'comment' : comment}}}, upsert=True)
+        return True
+        
+    def get_template_reaction_comment(self, reaction_id, template_id):
+        
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        
+        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        comments = {}
+        if not doc == None and 'comments' in doc:
+            comments = doc['comments']
+        
+        return comments
+    
+    def add_template_reaction_attribute(self, reaction_id, template_id, attribute, value):
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        timestamp = int(time.time())
+        
+        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        if doc == None:
+            self.initialize_empty_template_reaction_record(reaction_template_id)
+
+        self.collection_templates_reactions.update_one(
+            {'_id' : reaction_template_id},
+            {'$set' : {'attributes.' +  attribute: value}}, upsert=True)
+        
+        return True
+
+        
+    def get_template_reaction_attributes(self, reaction_id, template_id):
+        
+        reaction_template_id = '{}@{}'.format(reaction_id, template_id)
+        
+        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        attributes = {}
+        if not doc == None:
+            attributes = doc['attributes']
+        
+        return attributes

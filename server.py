@@ -389,6 +389,84 @@ def put_genome_from_kbase(id):
     data = request.get_json()
     return jsonify(data)
 
+@app.route("/query/function", methods=["POST"])
+def post_query_function():
+    data = request.get_json()
+    form = result = request.form
+    print('draw:', request.form.get('draw'))
+    print('search[value]:', request.form.get('search[value]'))
+    print('start:', request.form.get('start'))
+    print('length:', request.form.get('length'))
+    
+    start = int(request.form.get('start'))
+    length = int(request.form.get('length'))
+    sval = request.form.get('search[value]')
+    sparam = ""
+    if not sval == None and len(sval.strip()) > 0:
+        sparam = "WHERE n.key CONTAINS '{}'".format(sval)
+    print(sparam)
+    page = int(start / length)
+    print(start, length, page)
+    a, b = annotation_api.page_nodes2('Function', 
+                                      page, 
+                                      length, 
+                                      sparam)
+    
+    def get_gene_counts(function_str):
+        query = 'MATCH (n:Function {key:{function_str}})-[r:has_gene]->(o:KBaseGene) RETURN count(r) as total'
+        c = annotation_api.matcher.graph.run(query, function_str = function_str)
+        o = c.next()
+        return o.data()['total']
+    
+    def get_function_source(n):
+        function_source = set()
+        n = annotation_api.matcher.get(n.id)
+        for rel in n.graph.match((n, None), r_type = 'has_source'):
+            function_source.add(rel.end_node['key'])
+        return function_source
+    
+    def get_kos(n, limit):
+        kos = set()
+        n = annotation_api.matcher.get(n.id)
+        for rel in n.graph.match((None, n), r_type="has_annotation", limit=limit):
+            node_gene = rel.start_node
+            for rel_ortholog in node_gene.graph.match((node_gene, None), r_type="has_ortholog"):
+                kos.add(rel_ortholog.end_node['key'])
+        return kos
+    
+    search_limit = 2000
+    rows = []
+    if not a == None:
+        for r in a:
+            n = r['n']
+            #print(n.id, n['key'])
+            function_source = get_function_source(n)
+            gene_count = get_gene_counts(n['key'])
+            kos = get_kos(n, search_limit)
+            if gene_count > search_limit:
+                kos.add('*')
+            row = [n.id, n['key'], gene_count, list(kos), list(function_source)]
+            rows.append(row)
+    #print(form)
+    result = {
+        'draw' : request.form.get('draw'),
+        'recordsTotal' : 182576,
+        'recordsFiltered' : b[0].get('count'),
+        'data' : rows
+    }
+    return jsonify(result)
+
+@app.route("/query/ko", methods=["POST"])
+def post_query_ko():
+    data = request.get_json()
+    print(data)
+    return jsonify(data)
+
+#@app.route("/genome/kbase/<id>", methods=["PUT"])
+#def post_query_function(id):
+#    data = request.get_json()
+#    return jsonify(data)
+
 def get_functional_roles(ko_id):
     functions = {}
     doc = mdb_kbase_ko_to_genes.find_one({'_id' : ko_id})
@@ -542,9 +620,7 @@ if __name__ == '__main__':
         """
         
     escher_manager = modelseed_escher.EscherManager(escher)
-    #mclient = pymongo.MongoClient('mongodb://127.0.0.1:27017/')
-    #mclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
-    #mongodb+srv://<username>:<password>@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority
+    #aclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
     aclient = pymongo.MongoClient(config['mongo_client'])
     #annotation_api = AnnotationApi(mclient)
     annotation_api_atlas = CurationApi(aclient)
@@ -580,11 +656,8 @@ if __name__ == '__main__':
     annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
     annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
     
-    #print(escher_manager.escher.get_cache_dir())
-    #app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
-    #print(app.config)
-    
     import controller_biochem
+    import controller_annotation
     
     app.run(port=8058, host='0.0.0.0', debug=False)
     

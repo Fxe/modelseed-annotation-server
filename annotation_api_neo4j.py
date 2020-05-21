@@ -275,6 +275,23 @@ class AnnotationApiNeo4j:
         return out
     
     
+    def page_nodes2(self, l, page, size, where = ""):
+        """
+        !!!
+        """
+        result = None
+        count = None
+        with self.driver.session() as session:
+            query = session.read_transaction(self._page_nodes, l, page * size, size, where)
+            if len(query) > 0:
+                result = query
+        with self.driver.session() as session:
+            query = session.read_transaction(self._page_nodes_count, l, where)
+            if len(query) > 0:
+                count = query       
+        
+        return result, count
+    
     def page_nodes(self, l, page, size, where = ""):
         """
         !!!
@@ -283,7 +300,8 @@ class AnnotationApiNeo4j:
         with self.driver.session() as session:
             query = session.read_transaction(self._page_nodes, l, page * size, size, where)
             if len(query) > 0:
-                return query
+                result = query   
+        
         return result
 
     @staticmethod
@@ -338,6 +356,14 @@ class AnnotationApiNeo4j:
                 "RETURN n ORDER BY n.key SKIP $skip LIMIT $page_size"
         #print(query)
         result = tx.run(query, skip=skip, page_size=page_size)
+        return list(result.records())
+    
+    @staticmethod
+    def _page_nodes_count(tx, label, where = ""):
+        query = "MATCH (n:" + label + ") " + where + " " \
+                "RETURN count(n) as count"
+        #print(query)
+        result = tx.run(query)
         return list(result.records())
     
     @staticmethod

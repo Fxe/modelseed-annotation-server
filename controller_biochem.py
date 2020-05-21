@@ -25,6 +25,10 @@ def get_seed_reaction(id):
     o = modelseed_local.get_seed_reaction(id)
     if not o == None:
         clear_nan(o.data)
+        if id in modelseed_local.reaction_aliases:
+            o.data['aliases'] = {}
+            for database in modelseed_local.reaction_aliases[id]:
+                o.data['aliases'][database] = list(modelseed_local.reaction_aliases[id][database])
         return jsonify(o.data)
     return ""
 
@@ -33,5 +37,10 @@ def get_seed_compound(id):
     o = modelseed_local.get_seed_compound(id)
     if not o == None:
         clear_nan(o.data)
+        if id in modelseed_local.compound_aliases:
+            o.data['aliases'] = {}
+            for database in modelseed_local.compound_aliases[id]:
+                o.data['aliases'][database] = list(modelseed_local.compound_aliases[id][database])
+        
         return jsonify(o.data)
     return ""
