@@ -389,6 +389,88 @@ def put_genome_from_kbase(id):
     data = request.get_json()
     return jsonify(data)
 
+@app.route("/query/genome", methods=["POST"])
+def post_query_genome():
+    data = request.get_json()
+    form = result = request.form
+    start = int(request.form.get('start'))
+    length = int(request.form.get('length'))
+    print(data)
+    print(form)
+    sval = request.form.get('search[value]')
+    total = -1
+    total_filter = 50
+    taxa_filter = None
+    if not sval == None and len(sval.strip()) > 0:
+        taxa_filter = sval
+    result = annotation_api.page_genomes(0, length, taxa_filter)
+    
+    rows = []
+    if not result == None:
+        for r in result:
+            total = r['total_genomes']
+            row = [
+                r['n'].id, 
+                r['n']['key'], 
+                r['n']['scientific_name']
+            ]
+            rows.append(row)
+            #print(r['n'].id, r['n']['key'], r['n']['scientific_name'], r['total_genomes'])
+            
+    result = {
+        'draw' : 0,
+        'recordsTotal' : total,
+        'recordsFiltered' : total_filter,
+        'data' : rows
+    }
+            
+    return jsonify(result)
+
+
+@app.route("/query/genome/<genome_id>/genes", methods=["POST"])
+def post_query_genome_genes(genome_id):
+    sval = request.form.get('search[value]')
+    start = int(request.form.get('start'))
+    length = int(request.form.get('length'))
+    page = int(start / length)
+    #print(data)
+    #print(form)
+    print(start, length, page)
+    genes = set()
+    function_filter = None
+    if not sval == None and len(sval.strip()) > 0:
+        function_filter = sval
+    
+    result = annotation_api.page_genome_genes(genome_id, start, length, function_filter)
+    
+    rows = []
+    total = 0
+    total_filter = 50
+    if not result == None:
+        for r in result:
+            total = r['total_genes']
+            total_filter = r['total_genes']
+            genes.add(r['n']['key'])
+            #print(r['n'].id, r['n']['key'], r['function'], r['function_source'])
+            gene_id, genome_id = r['n']['key'].split('@')
+            row = [
+                r['n'].id, 
+                genome_id, 
+                gene_id, 
+                [r['function'], r['function_source']], 
+                {}
+            ]
+            rows.append(row)
+            
+    result = {
+        'draw' : request.form.get('draw'),
+        'recordsTotal' : total,
+        'recordsFiltered' : total_filter,
+        'data' : rows
+    }
+            
+    return jsonify(result)
+
 @app.route("/query/function", methods=["POST"])
 def post_query_function():
     data = request.get_json()
@@ -652,9 +734,9 @@ if __name__ == '__main__':
     annotation_api.init_constraints()
     
     kbase = cobrakbase.KBaseAPI(config['kbase']['token'])
-    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
-    annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
-    annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
+    #annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
+    #annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
+    #annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
     
     import controller_biochem
     import controller_annotation

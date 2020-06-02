@@ -8,9 +8,6 @@ from cobrakbase.core.kbasegenomesgenome import normalize_role
 
 logger = logging.getLogger(__name__)
 
-#temp before redis cacheing
-GENOME_SET_CACHE = {}
-
 def process_list(l, sep = ' ### ', subsep = ' ## '):
     j = []
     for o in l:
@@ -107,6 +104,7 @@ class AnnotationApiNeo4j:
         unique_value_key = [
             'KeggGenome', 'RefSeqGenome', 'GenBankGenome', 
             'ModelSeedReaction', 'LigandReaction',
+            'MetabolicModel',
             'KeggOrthology'
             'FunctionSource', 
             'FunctionGroup', 
@@ -349,6 +347,51 @@ class AnnotationApiNeo4j:
                         " ON MATCH  SET n.updated_at = timestamp() "
                         "RETURN n", key = key)
         return list(result.records())
+    
+    @staticmethod
+    def _tx_run(tx, query, params):
+        result = tx.run(query, params)
+        return list(result.records())
+    
+    def page_genomes(self, skip, limit, taxa_filter = None):
+        params = {
+            'skip' : skip,
+            'limit' : limit,
+        }
+        filter_function = ""
+        filter_count = ""
+        if not taxa_filter == None and len(taxa_filter) > 0:
+            filter_function = " WHERE n.scientific_name =~ '.*" + taxa_filter + ".*' OR n.taxonomy =~ '.*" + taxa_filter + ".*'"
+        query = \
+            "MATCH (n:RefSeqGenome) WITH COUNT(n) AS total_genomes " + filter_count + " \
+             MATCH (n:RefSeqGenome) " + filter_function + " RETURN n, total_genomes SKIP $skip LIMIT $limit"
+        result = None
+        with self.driver.session() as session:
+            query = session.read_transaction(self._tx_run, query, params)
+            if len(query) > 0:
+                result = query
+        return result
+    
+    def page_genome_genes(self, genome_id, skip, limit, function_filter = None):
+
+        params = {
+            'genome_id' : genome_id,
+            'limit' : limit,
+            'skip' : skip,
+        }
+        result = None
+        filter_function = ""
+        if not function_filter == None and len(function_filter) > 0:
+            filter_function = "AND f.key =~ '.*" + function_filter + ".*'"
+        query = \
+        "MATCH (n:KBaseGene) WHERE n.key CONTAINS $genome_id WITH COUNT(n) AS total_genes \
+         MATCH (n:KBaseGene)-[r:has_annotation]->(f:Function) WHERE n.key CONTAINS $genome_id " + filter_function + " RETURN n, collect(f.key) as function, collect(r.function_source) as function_source, total_genes SKIP $skip LIMIT $limit"
+        with self.driver.session() as session:
+            query = session.read_transaction(self._tx_run, query, params)
+            if len(query) > 0:
+                result = query
+
+        return result
     
     @staticmethod
     def _page_nodes(tx, label, skip, page_size, where = ""):
