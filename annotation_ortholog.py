@@ -112,6 +112,7 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
 class AnnotationOrtholog:
     
     def __init__(self, ortho, bios):
+        self.model_rxn_gpr = {}
         self.model_rxn_mapping = {}
         self.model_cpd_mapping = {}
         self.bios = bios
@@ -163,7 +164,22 @@ class AnnotationOrtholog:
                         if not g in self.model_gene_reaction[model_id]:
                             self.model_gene_reaction[model_id][g] = set()
                         self.model_gene_reaction[model_id][g].add(rxn.get_original_id())
-    
+
+    def get_model_reaction_from_seed_id(self, model_id, seed_rxn_id, score,
+                                        compartment=None, standard_compartment=True):
+        res = {}
+        model_reactions_by_database_id = self.bios.get_model_reactions_by_database_id(model_id,
+                                                                                      seed_rxn_id,
+                                                                                      'ModelSeedReaction')
+
+        for p in model_reactions_by_database_id:
+            author_str = p[1]
+            author_score = dict(map(lambda x: x.split(':'), author_str.split(';')))
+            for a in author_score:
+                if int(author_score[a]) >= score:
+                    res[p[0].id] = p[0]
+        return res
+
     def get_ortholog(self, genome_id, gene_id):
         if not genome_id in self.genome_id_to_ref:
             return None
@@ -200,9 +216,9 @@ class AnnotationOrtholog:
                 print(genome_id, gpr_exp, genes)
 
                 exp_match = {
-                    'rxn_id' : rxn_id,
-                    'gpr' : model_rxn_grp[model_id][rxn_id].data['imported_gpr'],
-                    'genes' : {}
+                    'rxn_id': rxn_id,
+                    'gpr': model_rxn_grp[model_id][rxn_id].data['imported_gpr'],
+                    'genes': {}
                 }
 
                 for gene_id in genes:
@@ -248,7 +264,7 @@ class AnnotationOrtholog:
             return l[0]
         return None
     
-    def get_model_rxn_grp(self, seed_rxn_id, compartment = None, standard_compartment = True):
+    def get_model_rxn_grp(self, seed_rxn_id, compartment=None, standard_compartment=True):
         model_rxn_grp = {}
         for model_id in self.models:
             model_rxn_grp[model_id] = {}
@@ -273,7 +289,72 @@ class AnnotationOrtholog:
     def get_reaction_mapping(self, model_id, rxn_id):
         if model_id in self.model_rxn_mapping and rxn_id in self.model_rxn_mapping[model_id]:
             return self.model_rxn_mapping[model_id][rxn_id]
-    
+        return None
+
+    def get_model_rxn_grp2(self, seed_rxn_id, compartment=None, standard_compartment=True, score=5):
+        model_rxn_grp = {}
+        for model_id in self.models:
+            print(model_id)
+            # model_rxn_grp[model_id] = get_model_rxn_grp3(aa, model_id, seed_rxn_id, compartment, standard_compartment)
+            model_rxn_grp[model_id] = self.get_model_reaction_from_seed_id(model_id, seed_rxn_id, score, compartment, standard_compartment)
+        return model_rxn_grp
+
+    def get_gpr(self, model_id, mrxn):
+        if model_id in self.model_rxn_gpr and mrxn.id in self.model_rxn_gpr[model_id]:
+            return self.model_rxn_gpr[model_id][mrxn.id]
+        return ''
+
+    def get_orthologs_from_seed_rxn_id3(self, seed_rxn_id, compartment=None, standard_compartment=True):
+        model_rxn_grp = self.get_model_rxn_grp2(seed_rxn_id, compartment, standard_compartment, 5)
+        #print(model_rxn_grp)
+        genome_match = {}
+        all_orthologs = set()
+        matched_orthologs = set()
+        for model_id in model_rxn_grp:
+            genome_id = self.model_to_genome[model_id]
+            if genome_id in self.genome_id_to_ref:
+                if genome_id not in genome_match:
+                    genome_match[genome_id] = {}
+                genome_match[genome_id][model_id] = []
+                genome = self.ref_to_genome[self.genome_id_to_ref[genome_id]]
+                for rxn_id in model_rxn_grp[model_id]:
+                    model_rxn = model_rxn_grp[model_id][rxn_id]
+                    gpr_exp = self.get_gpr(model_id, model_rxn)
+
+                    #print(model_id, rxn_id, gpr_exp)
+
+                    genes = self.get_genes(gpr_exp)
+
+                    logger.debug("%s %s %s", genome_id, gpr_exp, genes)
+
+                    exp_match = {
+                        'rxn_id': rxn_id,
+                        'gpr': gpr_exp,
+                        'genes': {}
+                    }
+
+                    for gene_id in genes:
+                        features = list(filter(lambda x: x['id'] == gene_id, genome.features))
+                        if len(features) == 1:
+                            ortholog = self.get_ortholog(genome_id, gene_id)
+                            matched_orthologs.add((genome_id, gene_id, ortholog['id']))
+                            for o in ortholog['orthologs']:
+                                o_genome_id = self.ref_to_genome[o[2]].id
+                                if o_genome_id in self.model_to_genome.values():
+                                    all_orthologs.add((o_genome_id, o[0], ortholog['id']))
+                            gene_function = '?' if 'function' not in features[0] else features[0]['function']
+                            #print(features[0]['id'], gene_function, ortholog['id'])
+                            exp_match['genes'][gene_id] = {
+                                'ortholog_id' : ortholog['id'],
+                                'function' : gene_function
+                            }
+                        else:
+                            print('!', gene_id, len(features))
+                    logger.debug("%s", exp_match)
+                    genome_match[genome_id][model_id].append(exp_match)
+
+        return all_orthologs, matched_orthologs, genome_match
+
     def get_orthologs_from_seed_rxn_id2(self, seed_rxn_id, compartment = None, standard_compartment = True):
         model_rxn_grp = self.get_model_rxn_grp(seed_rxn_id, compartment, standard_compartment)
         genome_match = {}

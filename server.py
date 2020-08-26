@@ -1,7 +1,7 @@
 import sys
 import json
 import logging
-import pandas as pd
+
 import time
 import yaml
 
@@ -11,12 +11,9 @@ import pymongo
 import cobra
 import escher
 import cobrakbase
-
 import modelseed_escher
-
 import biosapi
-from bios_mock import BIOS_MOCK
-
+from utils import load_cache_data, clear_nan
 
 from curation_api import CurationApi
 from escher_factory_api import process_build_data_input, EscherFactoryApi
@@ -42,31 +39,30 @@ api = Api(app)
 
 HUGE_CACHE = {}
 
-def clear_nan(d):
-    for k in d:
-        if type(d[k]) == float and pd.isna(d[k]):
-            d[k] = ""
 
 @app.route("/reload_temp", methods=["GET"])
 def reload():
     bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING = load_cache_data(CACHE_BASE_FOLDER)
     return jsonify('yes!')
-    
+
+
 @app.route("/status", methods=["GET"])
 def status():
     res = {
-        'server' : True,
-        'neo4j' : False,
-        'mongo_atlas' : False,
-        'mongo_atlas_info' : {},
-        'neo4j_nodes' : -1,
+        'server': True,
+        'neo4j': False,
+        'mongo_atlas': False,
+        'mongo_atlas_info': {},
+        'neo4j_nodes': -1,
     }
+
     try:
         node_count = len(annotation_api.neo4j_graph.nodes)
         res['neo4j'] = True
         res['neo4j_nodes'] = node_count
     except:
         pass
+
     try:
         cloud_status = annotation_api_atlas.server_info()
         res['mongo_atlas'] = True
@@ -74,26 +70,9 @@ def status():
     except:
         pass
     return jsonify(res)
-  
-@app.route("/escher/dataset", methods=["GET"])
-def list_datasets():
-    return jsonify(list(escher_manager.list_datasets()))
-  
-@app.route("/escher/dataset/<dataset>/model", methods=["GET"])
-def list_model(dataset):
-    return jsonify(list(escher_manager.list_datasets(dataset)))
-  
-@app.route("/escher/dataset/<dataset>/map", methods=["GET"])
-def list_map(dataset):
-    return jsonify(list(escher_manager.list_maps(dataset)))
 
-@app.route("/escher/dataset/<dataset>/map/<map_id>", methods=["GET"])
-def get_escher_map(dataset, map_id):
-    if '.' in map_id:
-        a, b = map_id.split('.', 1)
-        em = escher_manager.get_map(dataset, a, b)
-        return jsonify(em.escher_map)
-    return jsonify(list(escher_manager.list_maps(dataset)))
+
+
 
 @app.route("/escher/cluster", methods=["POST"])
 def escher_cluster_map():
@@ -148,6 +127,7 @@ def get_template_reaction(template_id, rxn_id):
     print(data)
     return jsonify(data)
 
+
 @app.route("/template/<template_id>/functions_rxn", methods=["POST"])
 def post_template_function_rxns(template_id):
     body = request.get_json()
@@ -158,6 +138,7 @@ def post_template_function_rxns(template_id):
             res = {}
         result[function_id] = res
     return jsonify(result)
+
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["POST"])
 def set_annotation_to_template(template_id, rxn_id):
@@ -278,11 +259,13 @@ def post_template_reaction_gene_annotation(template_id, rxn_id):
         print('bad params:', data.keys())
     return ""
 
+
 @app.route("/template/<template_id>/reaction/<rxn_id>/gene", methods=["GET"])
 def get_template_reaction_gene_annotation(template_id, rxn_id):
     logger.warning("/template/%s/reaction/%s/gene", template_id, rxn_id)
     data = annotation_api_atlas.get_reaction_gene_annotation(rxn_id, template_id)
     return jsonify(data)
+
 
 @app.route("/template/<template_id>/model_reaction/<mrxn_id>/map", methods=["POST"])
 def post_template_model_reaction_mapping(template_id, mrxn_id):
@@ -294,6 +277,7 @@ def post_template_model_reaction_mapping(template_id, mrxn_id):
         template_id, 
         request.form.get('logic'))
     return ""
+
 
 @app.route("/template/<template_id>/model_compound/<cpd_id>/map", methods=["POST"])
 def post_template_model_compound_mapping(template_id, rxn_id):
@@ -330,25 +314,6 @@ def get_annotation_ko(id):
     for k in functions:
         resp[k] = len(functions[k])
     return jsonify(resp)
-
-@app.route("/annotation/ortholog/<seed_id>", methods=["GET"])
-def get_ortholog_from_seed_rxn(seed_id):
-    all_orthologs, matched_orthologs, genome_match = annotation_orth.get_orthologs_from_seed_rxn_id2(seed_id)
-    result = annotation_orth.process_data2(all_orthologs, genome_match)
-    
-    return jsonify(result)
-
-@app.route("/annotation/ortholog/<genome_id>/<gene_id>", methods=["GET"])
-def get_ortholog_from_gene_genome_id(genome_id, gene_id):
-    res = annotation_orth.get_ortholog(genome_id, gene_id)
-    column_data = {}
-    if not res == None:
-        ortholog_id = res['id']
-        column_data = annotation_orth.process_data2({
-            (genome_id, gene_id, ortholog_id)
-        }, {})
-    
-    return jsonify(column_data)
 
 @app.route("/annotation/rxn/<id>", methods=["GET"])
 def get_rxn_annotation(id):
@@ -667,19 +632,8 @@ MODEL_RXN_MAPPING = None
 MODEL_CMP_MAPPING = None
 CACHE_BASE_FOLDER = None
 bios = None
+MODEL_RXN_GPR = None
 
-def load_cache_data(folder):
-    bios = BIOS_MOCK(folder + 'bios_cache_fungi.json')
-    MODEL_CPD_MAPPING = None
-    MODEL_RXN_MAPPING = None
-    MODEL_CMP_MAPPING = None
-    with open(folder + 'cpd_mapping_cache4.json', 'r') as f:
-        MODEL_CPD_MAPPING = json.loads(f.read())
-    with open(folder + 'rxn_mapping_cache4.json', 'r') as f:
-        MODEL_RXN_MAPPING = json.loads(f.read())
-    with open(folder + 'cmp_mapping_cache.json', 'r') as f:
-        MODEL_CMP_MAPPING = json.loads(f.read())
-    return bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING
 
 if __name__ == '__main__':
     with open('config.yaml', 'r') as config_h:    
@@ -690,7 +644,7 @@ if __name__ == '__main__':
         CHEMDUST_URL = config['chemapi']
         
         #bios = biosapi.BIOS()
-        bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING = load_cache_data(CACHE_BASE_FOLDER)
+        bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING, MODEL_RXN_GPR = load_cache_data(CACHE_BASE_FOLDER)
         """
         bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
         with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
@@ -734,12 +688,16 @@ if __name__ == '__main__':
     annotation_api.init_constraints()
     
     kbase = cobrakbase.KBaseAPI(config['kbase']['token'])
-    #annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
-    #annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
-    #annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
+    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
+    annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
+    annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
+    annotation_orth.model_rxn_gpr = MODEL_RXN_GPR
     
     import controller_biochem
     import controller_annotation
+    import controller_escher
+    import controller_ortholog
+    import controller_kbase
     
     app.run(port=8058, host='0.0.0.0', debug=False)
     

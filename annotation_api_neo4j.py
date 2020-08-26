@@ -129,6 +129,12 @@ class AnnotationApiNeo4j:
         if n == None:
             return None
         return Neo4jAnnotationFunction(n)
+    
+    def get_function_by_uid(self, function_id):
+        n = self.neo4j_graph.nodes[int(function_id)]
+        if n == None or not 'Function' in n.labels:
+            return None
+        return Neo4jAnnotationFunction(n)
                 
     def get_node(self, t, key):
         result = None
@@ -475,7 +481,7 @@ class AnnotationApiNeo4j:
         for role_id in roles:
             function = roles[role_id]
             function_data = self.get_function(function)
-            if not function_data == None and function_data.get('key') == function:
+            if not function_data == None and function_data.value == function:
                 function_uids[function] = function_data
             else:
                 #print('errooo!')

@@ -4,6 +4,7 @@ from biosapi.core.model import BiosModelReaction
 
 logger = logging.getLogger(__name__)
 
+
 class BIOS_MOCK:
     
     def __init__(self, data_path):
@@ -12,6 +13,8 @@ class BIOS_MOCK:
         self.model_spi = {}
         self.model_rxn = {}
         self.model_cmp = {}
+        self.model_rxn_mapping = {}
+        self.model_cpd_mapping = {}
         with open(data_path, 'r') as f:
             self.model_data = json.loads(f.read())
             
@@ -66,3 +69,11 @@ class BIOS_MOCK:
         if model_id in self.model_rxn and rxn_id in self.model_rxn[model_id]:
             return BiosModelReaction(self.model_rxn[model_id][rxn_id])
         return None
+    
+    def get_model_reactions_by_database_id(self, model_id, rxn_id, database):
+        res = []
+        if model_id in self.model_rxn_mapping and model_id in self.model_rxn:
+            for mrxn_id in self.model_rxn_mapping[model_id]:
+                if rxn_id in self.model_rxn_mapping[model_id][mrxn_id]:
+                    res.append((BiosModelReaction(self.model_rxn[model_id][mrxn_id]), 'mock:5'))
+        return res

@@ -20,7 +20,7 @@ def fix_mongo_object_key(doc):
 
 class CurationApi:
 
-    def __init__(self, client, database_id = 'annotation'):
+    def __init__(self, client, database_id='annotation'):
         self.database = client[database_id]
         self.collection_templates_reactions = self.database['templates_reactions']
         self.collection_templates_reactions_ko = self.database['templates_reactions_manual_ko']
