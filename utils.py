@@ -17,7 +17,7 @@ def load_cache_data(folder):
         MODEL_CMP_MAPPING = json.loads(f.read())
     with open(folder + 'model_rxn_gpr_cache.json', 'r') as f:
         model_rxn_gpr = json.loads(f.read())
-    df = pd.read_csv('/Users/fliu/workspace/jupyter/data/fungi/etc_mapping.tsv', sep='\t')
+    df = pd.read_csv(folder + '/etc_mapping.tsv', sep='\t')
     for row_id, d in df.iterrows():
         seed_id = d['ModelSEED']
         for k in d.keys():
