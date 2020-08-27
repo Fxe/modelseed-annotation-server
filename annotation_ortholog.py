@@ -91,7 +91,7 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
     kbase_models = {}
     for model_id in model_ids:
         logger.warning('load [%s:%s]', model_id, ws_fungi)
-        fbamodel = KBaseFBAModel(kbase.get_object(model_id, ws_fungi))
+        fbamodel = kbase.get_from_ws(model_id, ws_fungi)
         kbase_models[fbamodel.id] = fbamodel
         
     annotation_orth = AnnotationOrtholog(ortho, bios)
