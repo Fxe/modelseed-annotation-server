@@ -6,12 +6,12 @@ RUN pip install flask
 RUN pip install flask_restful
 RUN pip install redis
 RUN pip install pymongo
-RUN pip install py2neo
+RUN pip install py2neo==4.3.0
 RUN pip install dnspython
 RUN pip install networkx
-RUN pip install neo4j
+RUN pip install neo4j==1.7.6
 RUN pip install cobra
-RUN pip install cobrakbase==0.2.2
+#RUN pip install cobrakbase==0.2.7
 RUN pip install Escher==1.6.0
 RUN pip install flask-cors
 RUN pip install pyyaml
@@ -26,8 +26,13 @@ RUN git clone https://github.com/ModelSEED/modelseed-escher.git /opt/build/model
 RUN mkdir -p /opt/build
 RUN git clone https://github.com/Fxe/biosapi.git /opt/build/biosapi
 
+RUN mkdir -p /opt/build
+RUN git clone https://github.com/Fxe/cobrakbase.git /opt/build/cobrakbase
+
+RUN pip install /opt/build/cobrakbase
 RUN pip install /opt/build/modelseed-escher
 RUN pip install /opt/build/biosapi
+
 
 COPY . /opt/annotation
 COPY entrypoint.sh /
