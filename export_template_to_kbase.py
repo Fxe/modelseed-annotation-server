@@ -9,15 +9,8 @@ logger = logging.getLogger(__name__)
 
 def export_template(template_o, modelseed, annotation_api, mongo_database, annotation_namespace='fungi'):
     
-    from cobra.core.dictlist import DictList
-    temp_object = {}
-    for k in template_o.data.keys():
-        if k not in ['data', 'info', 'provenance']:
-            if type(template_o.data[k]) is DictList:
-                temp_object[k] = list(template_o.data[k])
-            else:
-                temp_object[k] = template_o.data[k]
-    template = NewModelTemplate(copy.deepcopy(temp_object), template_o.info, None, 'tftr', 'tcpx')
+    data_copy = copy.deepcopy(template_o.get_data())
+    template = NewModelTemplate(data_copy, template_o.info, None, 'tftr', 'tcpx')
     #template = NewModelTemplate(copy.deepcopy(template_o), 'tftr', 'tcpx')
     validator = NewModelTemplateValidator(template)
     validator.validate_compounds()

@@ -67,15 +67,6 @@ def flask_export_template():
     output_template = export_template(input_template, modelseed_local, annotation_api,
                                       annotation_api_atlas.database, annotation_namespace)
 
-    from cobra.core.dictlist import DictList
-    temp_object = {}
-    for k in output_template.data.keys():
-        if k not in ['data', 'info', 'provenance']:
-            if type(output_template.data[k]) is DictList:
-                temp_object[k] = list(output_template.data[k])
-            else:
-                temp_object[k] = output_template.data[k]
-    
-    result = api.save_object(output_id, output_workspace, 'KBaseFBA.NewModelTemplate', temp_object)
+    result = api.save_object(output_id, output_workspace, 'KBaseFBA.NewModelTemplate', output_template.get_data())
 
     return jsonify(result)
