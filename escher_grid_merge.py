@@ -146,8 +146,8 @@ def report(cluster_data, em):
     cluster_map = em.escher_map
     any_merge = True
     result = {
-        'models' : set(),
-        'records' : []
+        'models': set(),
+        'records': []
     }
     for cluster in cluster_data:
         record = {
@@ -205,7 +205,8 @@ def report(cluster_data, em):
 
 def generate_integration_report(cluster_params, escher_manager):
     em = EscherMap(cluster_params['escher_map'])
-    em = add_layers(em, cluster_params['grid'], escher_manager)
+    if 'grid' in cluster_params:
+        em = add_layers(em, cluster_params['grid'], escher_manager)
     ec = EscherCluster(25)
     cluster_data = ec.cluster(em)
     #cluster_ids = ec.cluster_ids(cluster_data, em)

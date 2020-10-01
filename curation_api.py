@@ -3,8 +3,9 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
 def fix_mongo_object_key(doc):
-    if doc == None:
+    if doc is None:
         return doc
     for k in doc:
         delete = set()
@@ -17,6 +18,30 @@ def fix_mongo_object_key(doc):
             for key in delete:
                 del doc[k][key]
     return doc
+
+
+class CurationReaction:
+
+    def __init__(self, api, doc):
+        self.data = doc
+        self.api = api
+
+    def set_ko(self, ko, logic, user_id):
+        reaction_id, template_id = self.data['_id'].split('@')
+        return self.api.set_manual_ko(reaction_id, template_id, ko, logic, user_id)
+
+    def get_kos(self):
+        reaction_id, template_id = self.data['_id'].split('@')
+        return self.api.get_manual_ko(reaction_id, template_id)
+
+    def add_comment(self, comment, user_id):
+        reaction_id, template_id = self.data['_id'].split('@')
+        return self.api.add_template_reaction_comment(reaction_id, template_id, user_id, comment, self.data['cmp'])
+
+    def get_comments(self):
+        reaction_id, template_id = self.data['_id'].split('@')
+        return self.api.get_template_reaction_comment(reaction_id, template_id)
+
 
 class CurationApi:
 
@@ -31,36 +56,53 @@ class CurationApi:
         
     def server_info(self):
         return self.database.client.server_info()
+
+    def get_curation_reaction(self, rxn_id, seed_id, config, template_id):
+        reaction_template_id = '{}@{}'.format(rxn_id, template_id)
+        doc = self.collection_templates_reactions.find_one({'_id': reaction_template_id})
+        if doc is None:
+            doc = self.initialize_empty_template_reaction_record(reaction_template_id, seed_id, config)
+        return CurationReaction(self, doc)
     
-    def initialize_empty_template_reaction_record(self, reaction_template_id):
+    def initialize_empty_template_reaction_record(self, reaction_template_id, seed_id, cmp_config):
         self.collection_templates_reactions.insert_one({
-            '_id' : reaction_template_id,
-            'functions' : {},
-            'log' : [],
-            'comments' : [],
-            'attributes' : {}
+            '_id': reaction_template_id,
+            'functions': {},
+            'log': [],
+            'comments': [],
+            'cmp': cmp_config,
+            'attributes': {},
+            'annotation': {
+                'seed__DOT__reaction' : seed_id
+            }
         })
+        return self.collection_templates_reactions.find_one({'_id': reaction_template_id})
     
-    def add_function_to_template_rxn(self, function_id, reaction_id, user_id, template_id, logic):
+    def add_function_to_template_rxn(self, function_id, reaction_id, user_id, template_id, logic, cmp_config=None):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
 
         timestamp = int(time.time())
 
-        #update template
-        doc = self.collection_templates_reactions.find_one({'_id':reaction_template_id})
-        if doc == None:
-            self.initialize_empty_template_reaction_record(reaction_template_id)
+        # update template
+        doc = self.collection_templates_reactions.find_one({'_id': reaction_template_id})
+        if doc is None:
+            if cmp_config is None:
+                return False
+            else:
+                self.initialize_empty_template_reaction_record(reaction_template_id, cmp_config)
             
         self.collection_templates_reactions.update_one(
-            {"_id" :reaction_template_id},
-            {'$set' : {"functions." + str(function_id) : logic}})
+            {"_id":reaction_template_id},
+            {'$set': {"functions." + str(function_id) : logic}})
 
-        #log action
+        # log action
         self.collection_templates_reactions.update_one(
-            {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)
-        
-        
+            {'_id': reaction_template_id},
+            {'$push': {
+                'log': {'timestamp': timestamp, 'user_id': user_id, 'action': logic, 'target': function_id}
+            }}, upsert=True)
+        return True
+
     def set_annotation_to_gene(self, genome_id, gene_id, reaction_id, user_id, template_id, logic, comment = ""):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         gene_genome_id = '{}@{}'.format(gene_id, genome_id)
@@ -68,27 +110,27 @@ class CurationApi:
         timestamp = int(time.time())
 
         doc = self.collection_reaction_gene_annotation.find_one({'_id':reaction_template_id})
-        if doc == None:
+        if doc is None:
             self.collection_reaction_gene_annotation.insert_one({
-                '_id' : reaction_template_id,
-                'genes' : {},
-                'log' : []
+                '_id': reaction_template_id,
+                'genes': {},
+                'log': []
             })
 
         self.collection_reaction_gene_annotation.update_one(
-            {"_id" :reaction_template_id},
-            {'$set' : {"genes." + str(gene_genome_id.replace('.', '#')) : logic}}
+            {"_id":reaction_template_id},
+            {'$set': {"genes." + str(gene_genome_id.replace('.', '#')): logic}}
         )
 
-        #log action
+        # log action
         self.collection_reaction_gene_annotation.update_one(
-            {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {
-                'timestamp' : timestamp, 
-                'user_id' : user_id, 
-                'action' : logic, 
-                'comment' : comment,
-                'target' : gene_genome_id}
+            {'_id': reaction_template_id},
+            {'$push': {'log': {
+                'timestamp': timestamp,
+                'user_id': user_id,
+                'action': logic,
+                'comment': comment,
+                'target': gene_genome_id}
                        }}, 
             upsert=True
         )
@@ -101,7 +143,7 @@ class CurationApi:
         timestamp = int(time.time())
 
         doc = self.collection_model_reaction_mapping.find_one({'_id':reaction_template_id})
-        if doc == None:
+        if doc is None:
             self.collection_model_reaction_mapping.insert_one({
                 '_id' : reaction_template_id,
                 'mapping' : {},
@@ -109,19 +151,19 @@ class CurationApi:
             })
 
         self.collection_model_reaction_mapping.update_one(
-            {"_id" :reaction_template_id},
-            {'$set' : {"mapping." + str(ref.replace('.', '#')) : logic}}
+            {"_id": reaction_template_id},
+            {'$set': {"mapping." + str(ref.replace('.', '#')): logic}}
         )
 
-        #log action
+        # log action
         self.collection_model_reaction_mapping.update_one(
-            {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {
-                'timestamp' : timestamp, 
-                'user_id' : user_id, 
-                'action' : logic, 
-                'comment' : comment,
-                'target' : ref}
+            {'_id': reaction_template_id},
+            {'$push': {'log': {
+                'timestamp': timestamp,
+                'user_id': user_id,
+                'action': logic,
+                'comment': comment,
+                'target': ref}
                        }}, 
             upsert=True
         )
@@ -133,8 +175,8 @@ class CurationApi:
 
         timestamp = int(time.time())
 
-        doc = self.collection_model_compound_mapping.find_one({'_id':compound_template_id})
-        if doc == None:
+        doc = self.collection_model_compound_mapping.find_one({'_id': compound_template_id})
+        if doc is None:
             self.collection_model_compound_mapping.insert_one({
                 '_id' : compound_template_id,
                 'mapping' : {},
@@ -142,42 +184,40 @@ class CurationApi:
             })
 
         self.collection_model_compound_mapping.update_one(
-            {"_id" :compound_template_id},
-            {'$set' : {"mapping." + str(ref.replace('.', '#')) : logic}}
+            {"_id":compound_template_id},
+            {'$set': {"mapping." + str(ref.replace('.', '#')): logic}}
         )
 
-        #log action
+        # log action
         self.collection_model_compound_mapping.update_one(
-            {'_id' : compound_template_id}, 
-            {'$push' : {'log' : {
-                'timestamp' : timestamp, 
-                'user_id' : user_id, 
-                'action' : logic, 
-                'comment' : comment,
-                'target' : ref}
+            {'_id': compound_template_id},
+            {'$push': {'log': {
+                'timestamp': timestamp,
+                'user_id': user_id,
+                'action': logic,
+                'comment': comment,
+                'target': ref}
                        }}, 
             upsert=True
         )
         
     def get_reaction_gene_annotation(self, reaction_id, template_id):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
-        data = self.collection_reaction_gene_annotation.find_one({'_id' : reaction_template_id})
+        data = self.collection_reaction_gene_annotation.find_one({'_id': reaction_template_id})
         fix_mongo_object_key(data)
         return data
     
     def get_model_compound_mapping(self, model_compound_id, template_id):
         compound_template_id = '{}@{}'.format(model_compound_id, template_id)
-        data = self.collection_model_compound_mapping.find_one({'_id' : compound_template_id})
+        data = self.collection_model_compound_mapping.find_one({'_id': compound_template_id})
         fix_mongo_object_key(data)
         return data
     
     def get_model_reaction_mapping(self, model_reaction_id, template_id):
         reaction_template_id = '{}@{}'.format(model_reaction_id, template_id)
-        data = self.collection_model_reaction_mapping.find_one({'_id' : reaction_template_id})
+        data = self.collection_model_reaction_mapping.find_one({'_id': reaction_template_id})
         fix_mongo_object_key(data)
         return data
-    
-    
     
     def get_rxn_with_function(self, function_id, template_id):
         result = {}
@@ -193,12 +233,12 @@ class CurationApi:
     
     def get_manual_ko(self, reaction_id, template_id):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
-        data = self.collection_templates_reactions_ko.find_one({'_id' : reaction_template_id})
-        if data == None:
+        data = self.collection_templates_reactions_ko.find_one({'_id': reaction_template_id})
+        if data is None:
             return {
-                '_id' : reaction_template_id,
-                'ko' : {},
-                'log' : []
+                '_id': reaction_template_id,
+                'ko': {},
+                'log': []
             }
         return data
     
@@ -206,31 +246,33 @@ class CurationApi:
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         timestamp = int(time.time())
 
-        #update template
-        doc = self.collection_templates_reactions_ko.find_one({'_id':reaction_template_id})
-        if doc == None:
+        # update template
+        doc = self.collection_templates_reactions_ko.find_one({'_id': reaction_template_id})
+        if doc is None:
             self.collection_templates_reactions_ko.insert_one({
-                '_id' : reaction_template_id,
-                'ko' : {},
-                'log' : []
+                '_id': reaction_template_id,
+                'ko': {},
+                'log': []
             })
         self.collection_templates_reactions_ko.update_one(
-            {"_id" :reaction_template_id},
-            {'$set' : {"ko." + str(ko_id) : logic}})
+            {"_id": reaction_template_id},
+            {'$set': {"ko." + str(ko_id): logic}})
 
-        #log action
+        # log action
         self.collection_templates_reactions_ko.update_one(
-            {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : ko_id}}}, upsert=True)
+            {'_id': reaction_template_id},
+            {'$push': {
+                'log': {'timestamp': timestamp, 'user_id': user_id, 'action': logic, 'target': ko_id}
+            }}, upsert=True)
         
     def get_manual_function(self, reaction_id, template_id):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
-        data = self.collection_templates_reactions_function.find_one({'_id' : reaction_template_id})
-        if data == None:
+        data = self.collection_templates_reactions_function.find_one({'_id': reaction_template_id})
+        if data is None:
             return {
-                '_id' : reaction_template_id,
-                'functions' : {},
-                'log' : []
+                '_id': reaction_template_id,
+                'functions': {},
+                'log': []
             }
         return data
         
@@ -238,61 +280,68 @@ class CurationApi:
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         timestamp = int(time.time())
 
-        #update template
-        doc = self.collection_templates_reactions_function.find_one({'_id':reaction_template_id})
-        if doc == None:
+        # update template
+        doc = self.collection_templates_reactions_function.find_one({'_id': reaction_template_id})
+        if doc is None:
             self.collection_templates_reactions_function.insert_one({
-                '_id' : reaction_template_id,
-                'functions' : {},
-                'log' : []
+                '_id': reaction_template_id,
+                'functions': {},
+                'log': []
             })
         self.collection_templates_reactions_function.update_one(
-            {"_id" :reaction_template_id},
-            {'$set' : {"functions." + str(function_id) : logic}})
+            {"_id": reaction_template_id},
+            {'$set': {"functions." + str(function_id): logic}})
 
-        #log action
+        # log action
         self.collection_templates_reactions_function.update_one(
-            {'_id' : reaction_template_id}, 
-            {'$push' : {'log' : {'timestamp' : timestamp, 'user_id' : user_id, 'action' : logic, 'target' : function_id}}}, upsert=True)
+            {'_id': reaction_template_id},
+            {'$push': {
+                'log': {'timestamp': timestamp, 'user_id': user_id, 'action': logic, 'target': function_id}
+            }}, upsert=True)
         
-    def add_template_reaction_comment(self, reaction_id, template_id, user_id, comment):
+    def add_template_reaction_comment(self, reaction_id, template_id, user_id, comment, cmp_config=None):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         timestamp = int(time.time())
         
-        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
-        if doc == None:
-            self.initialize_empty_template_reaction_record(reaction_template_id)
+        doc = self.collection_templates_reactions.find_one({'_id': reaction_template_id})
+        if doc is None:
+            if cmp_config is None:
+                return False
+            else:
+                self.initialize_empty_template_reaction_record(reaction_template_id, cmp_config)
                 
         self.collection_templates_reactions.update_one(
-            {'_id' : reaction_template_id},
-            {'$push' : {'comments' : {'timestamp' : timestamp, 'user_id' : user_id, 'comment' : comment}}}, upsert=True)
+            {'_id': reaction_template_id},
+            {'$push': {'comments': {'timestamp': timestamp, 'user_id': user_id, 'comment': comment}}}, upsert=True)
         return True
         
     def get_template_reaction_comment(self, reaction_id, template_id):
         
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         
-        doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+        doc = self.collection_templates_reactions.find_one({'_id': reaction_template_id})
         comments = {}
         if not doc == None and 'comments' in doc:
             comments = doc['comments']
         
         return comments
     
-    def add_template_reaction_attribute(self, reaction_id, template_id, attribute, value):
+    def add_template_reaction_attribute(self, reaction_id, template_id, attribute, value, cmp_config=None):
         reaction_template_id = '{}@{}'.format(reaction_id, template_id)
         timestamp = int(time.time())
         
         doc = self.collection_templates_reactions.find_one({'_id' : reaction_template_id})
-        if doc == None:
-            self.initialize_empty_template_reaction_record(reaction_template_id)
+        if doc is None:
+            if cmp_config is None:
+                return False
+            else:
+                self.initialize_empty_template_reaction_record(reaction_template_id, cmp_config)
 
         self.collection_templates_reactions.update_one(
-            {'_id' : reaction_template_id},
-            {'$set' : {'attributes.' +  attribute: value}}, upsert=True)
+            {'_id': reaction_template_id},
+            {'$set': {'attributes.' + attribute: value}}, upsert=True)
         
         return True
-
         
     def get_template_reaction_attributes(self, reaction_id, template_id):
         
@@ -304,3 +353,12 @@ class CurationApi:
             attributes = doc['attributes']
         
         return attributes
+
+    def get_template_reactions_from_seed_ids(self, seed_id):
+        result = {}
+        for doc in self.collection_templates_reactions.find():
+            if 'annotation' in doc and 'seed__DOT__reaction' in doc['annotation'] and \
+                    doc['annotation']['seed__DOT__reaction'] == seed_id:
+                result[seed_id] = doc
+
+        return result

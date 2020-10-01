@@ -71,17 +71,17 @@ def build_annotation_ortholog(kbase, path_to_cache, bios):
 
         'iMM904_KBase3',
         'iTO977_KBase2',
-        'iSS884_KBase2',
-        'iLC915_KBase2',
+        'iSS884_KBase3',
+        'iLC915_KBase3',
 
         'iWV1213_KBase2',
         'iAL1006_KBase3',
 
         'iRL766_KBase2',
-        'iMA871_KBase2',
+        'iMA871_KBase3',
 
         'iJDZ836_KBase3',
-        'iWV1314_KBase2',
+        'iWV1314_KBase3',
         'iOD907_KBase2',
         'iJL1454_KBase2',
         'iNX804_KBase2',
@@ -146,24 +146,32 @@ class AnnotationOrtholog:
             return genes
         except:
             return None
-    
+
+    @staticmethod
+    def get_original_id(rxn):
+        sid = None
+        if 'string_attributes' in dir(rxn) and 'original_id' in rxn.string_attributes:
+            return rxn.string_attributes['original_id']
+        return sid
+
     def index_model_gene_reactions(self):
         for model_id in self.models:
             self.model_gene_reaction[model_id] = {}
             for rxn in self.models[model_id].reactions:
-                gpr_exp = rxn.data['imported_gpr']
-                if model_id == 'iMA871':
-                    gpr_exp = gpr_exp.replace('; ', ' or ')
-                if model_id == 'iCT646' and rxn.get_original_id() == 'R_FAS100':
-                    gpr_exp = 'CTRG_02936 OR (CTRG_05241 AND CTRG_02501)'
-                genes = self.get_genes(gpr_exp)
-                if genes == None:
-                    logger.warning('[%s] %s: %s', model_id, rxn.get_original_id(), rxn.data['imported_gpr'])
-                elif len(genes) > 0:
-                    for g in genes:
-                        if not g in self.model_gene_reaction[model_id]:
-                            self.model_gene_reaction[model_id][g] = set()
-                        self.model_gene_reaction[model_id][g].add(rxn.get_original_id())
+                if 'imported_gpr' in dir(rxn):
+                    gpr_exp = rxn.imported_gpr
+                    if model_id == 'iMA871':
+                        gpr_exp = gpr_exp.replace('; ', ' or ')
+                    if model_id == 'iCT646' and self.get_original_id(rxn) == 'R_FAS100':
+                        gpr_exp = 'CTRG_02936 OR (CTRG_05241 AND CTRG_02501)'
+                    genes = self.get_genes(gpr_exp)
+                    if genes is None:
+                        logger.warning('[%s] %s: %s', model_id, self.get_original_id(rxn), rxn.imported_gpr)
+                    elif len(genes) > 0:
+                        for g in genes:
+                            if g not in self.model_gene_reaction[model_id]:
+                                self.model_gene_reaction[model_id][g] = set()
+                            self.model_gene_reaction[model_id][g].add(self.get_original_id(rxn))
 
     def get_model_reaction_from_seed_id(self, model_id, seed_rxn_id, score,
                                         compartment=None, standard_compartment=True):
@@ -259,7 +267,7 @@ class AnnotationOrtholog:
         return list(sorted(cmp))
     
     def get_kbase_reaction(self, model_id, sid):
-        l = list(filter(lambda x : x.get_original_id() == sid, self.models[model_id].reactions))
+        l = list(filter(lambda x : self.get_original_id(x) == sid, self.models[model_id].reactions))
         if len(l) == 1:
             return l[0]
         return None

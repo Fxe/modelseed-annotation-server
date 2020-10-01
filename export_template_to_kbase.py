@@ -3,25 +3,22 @@ import copy
 from cobrakbase.core.kbasefba import NewModelTemplate, TemplateManipulator, TemplateCuration
 from cobrakbase.core.kbasefba.newmodeltemplate_validator import NewModelTemplateValidator
 from cobrakbase.core.kbasegenomesgenome import normalize_role
+from cobrakbase.core.kbasefba.new_template_reaction import NewModelTemplateReaction
 
 logger = logging.getLogger(__name__)
 
 
-def export_template(template_o, modelseed, annotation_api, mongo_database, annotation_namespace='fungi'):
+def export_template(template_o, modelseed, annotation_api, mongo_database,
+                    annotation_namespace='fungi',
+                    reaction_list=None,
+                    clear_reactions=False, clear_complexes=False, clear_roles=False):
     
     data_copy = copy.deepcopy(template_o.get_data())
     template = NewModelTemplate(data_copy, template_o.info, None, 'tftr', 'tcpx')
-    #template = NewModelTemplate(copy.deepcopy(template_o), 'tftr', 'tcpx')
-    validator = NewModelTemplateValidator(template)
-    validator.validate_compounds()
-    validator.validate()
-    print('undeclared compounds', len(validator.undec_compounds))
-    print('undeclared roles', len(validator.undec_roles))
-    print('undeclared complexes', len(validator.undec_complexes))
 
     tm = TemplateManipulator(template, None)
     template_reactions_filter = tm.clean_template('ModelSEED')
-    len(template_reactions_filter)
+    print(len(template_reactions_filter))
     updated, removed = tm.clear_orphan_roles()
     print('updated', len(updated))
     print('removed', len(removed))
@@ -32,6 +29,29 @@ def export_template(template_o, modelseed, annotation_api, mongo_database, annot
     print('undeclared compounds', len(validator.undec_compounds))
     print('undeclared roles', len(validator.undec_roles))
     print('undeclared complexes', len(validator.undec_complexes))
+
+    if clear_reactions or reaction_list is not None:
+        template.reactions.clear()
+        template.reactions._dict.clear()
+    if clear_roles:
+        template.complexes.clear()
+        template.complexes._dict.clear()
+        template.roles.clear()
+        template.roles._dict.clear()
+        template.role_set_to_cpx.clear()
+        template.search_name_to_role_id.clear()
+        template.role_last_id = 0
+        template.complex_last_id = 0
+    if clear_complexes:
+        template.complexes.clear()
+        template.complexes._dict.clear()
+        template.role_set_to_cpx.clear()
+        template.complex_last_id = 0
+    # if roles or complexes were removed clear from reactions
+    if clear_roles or clear_complexes:
+        for trxn in template.reactions:
+            trxn.templatecomplex_refs.clear()
+
 
     tc = TemplateCuration(template, mongo_database, annotation_api)
     tm = TemplateManipulator(template, modelseed)
@@ -45,8 +65,13 @@ def export_template(template_o, modelseed, annotation_api, mongo_database, annot
         if len(search_name_to_role_id[k]) > 1:
             print(k)
     accept, remove = tc.get_curation_data(annotation_namespace)
-    test_accept = dict(filter(lambda x : len(x[1]) > 0, accept.items()))
-    test_remove = dict(filter(lambda x : len(x[1]) > 0, remove.items()))
+    if reaction_list is not None:  # filter curation actions if reaction list is provided
+        accept = dict(filter(lambda x: x[0] in reaction_list, accept.items()))
+        remove = dict(filter(lambda x: x[0] in reaction_list, remove.items()))
+    test_accept = dict(filter(lambda x: len(x[1]) > 0, accept.items()))
+    test_remove = dict(filter(lambda x: len(x[1]) > 0, remove.items()))
+
+    # add new roles to template
 
     test_accept_sn_to_roles = tc.get_roles_to_add(test_accept, search_name_to_role_id)
     for role_sn in test_accept_sn_to_roles:
@@ -65,26 +90,43 @@ def export_template(template_o, modelseed, annotation_api, mongo_database, annot
                 return list(filter(lambda x: not x == 'c', v))[0]
         return None
 
-    for doc in tc.curation_api['templates_reactions'].find():
-        rxn_id, template_id = doc['_id'].split('@')
-        if template_id == annotation_namespace:
-            if 'cmp' in doc:
-                cmp_id = get_compartment_token(doc['cmp'])
-                # print(rxn_id, cmp_id)
-                trxn = template.get_reaction(rxn_id + '_' + cmp_id)
-                if trxn == None:
-                    tm.add_reaction(rxn_id, doc['cmp'])
+    # remove all reactions exclude from template
+    remove_reactions = tc.get_disabled_reactions(annotation_namespace)
 
-    cmp = 'c'
-    for rxn_id in set(test_remove):
-        template_rxn = template.get_reaction(rxn_id + '_' + cmp)
-        if template_rxn is None:
-            logger.warning('%s', rxn_id)
-        else:
-            role_change = tc.get_role_change(rxn_id, {}, test_remove)
+    reactions_in_template = set(map(lambda x: x.id, template.reactions))
+
+    # strip complexes from reactions in remove set
+    for trxn_id in remove_reactions:
+        if trxn_id in reactions_in_template:
+            trxn = template.get_reaction(trxn_id)
+            trxn.templatecomplex_refs.clear()
+
+    # add new reactions
+    reactions_to_add = []
+    for doc in tc.curation_api['templates_reactions'].find():
+        template_rxn_id, template_id = doc['_id'].split('@')
+        if template_id == annotation_namespace and template_rxn_id not in remove_reactions and \
+                (reaction_list is None or template_rxn_id in reaction_list):
+            if 'cmp' in doc:
+                if template_rxn_id not in reactions_in_template and \
+                        'annotation' in doc and \
+                        'seed__DOT__reaction' in doc['annotation']:
+                    seed_id = doc['annotation']['seed__DOT__reaction']
+                    trxn_b = tm.build_template_reaction_from_modelseed(seed_id, doc['cmp'])
+                    reactions_to_add.append(NewModelTemplateReaction(trxn_b))
+    template.reactions += reactions_to_add
+    reactions_in_template = set(map(lambda x: x.id, template.reactions))
+
+    for trxn_id in set(test_remove):
+        if trxn_id in reactions_in_template and trxn_id not in remove_reactions:
+            template_rxn = template.get_reaction(trxn_id)
+            role_change = tc.get_role_change(trxn_id, {}, test_remove)
             # role_change = get_role_change2(tc, rxn_id, {}, test_remove)
             # print(trxn.id)
             nfunction = tc.update_roles(template_rxn, role_change, search_name_to_role_id, True)
+        else:
+            logger.debug('%s', trxn_id)
+
 
     def refresh(template):
         template.role_set_to_cpx = {}
@@ -101,32 +143,34 @@ def export_template(template_o, modelseed, annotation_api, mongo_database, annot
 
     refresh(template)
 
-    cmp = 'c'
-    for rxn_id in set(test_accept):
-        template_rxn = template.get_reaction(rxn_id + '_' + cmp)
-        if template_rxn is None:
-            logger.warning('%s', rxn_id)
-        else:
+    for trxn_id in set(test_accept):
+        if trxn_id in reactions_in_template and trxn_id not in remove_reactions  and \
+                (reaction_list is None or trxn_id in reaction_list):
+            template_rxn = template.get_reaction(trxn_id)
             try:
-                role_change = tc.get_role_change(rxn_id, test_accept, {})
+                role_change = tc.get_role_change(trxn_id, test_accept, {})
                 # role_change = get_role_change2(tc, rxn_id, test_accept, {})
                 nfunction = tc.update_roles(template_rxn, role_change, search_name_to_role_id, True)
             except Exception as e:
                 print(template_rxn.id, e)
+        else:
+            logger.debug('%s', trxn_id)
+
 
     reaction_annotation = tc.get_reaction_annotation()
     role_uids = set()
     system_accept_role_uids = set()
     for rxn_id in reaction_annotation[annotation_namespace]:
-        for role_id in reaction_annotation[annotation_namespace][rxn_id]['user']:
-            score = reaction_annotation[annotation_namespace][rxn_id]['current'][str(role_id)]
-            if score == 'opt_score1':
-                user_log = reaction_annotation[annotation_namespace][rxn_id]['user'][role_id]
-                if len(user_log) > 1 or 'system' not in user_log:
-                    role_uids.add(role_id)
-                    # print(rxn_id, role_id, user_log, score)
-                else:
-                    system_accept_role_uids.add(role_id)
+        if reaction_list is None or rxn_id in reaction_list:
+            for role_id in reaction_annotation[annotation_namespace][rxn_id]['user']:
+                score = reaction_annotation[annotation_namespace][rxn_id]['current'][str(role_id)]
+                if score == 'opt_score1':
+                    user_log = reaction_annotation[annotation_namespace][rxn_id]['user'][role_id]
+                    if len(user_log) > 1 or 'system' not in user_log:
+                        role_uids.add(role_id)
+                        # print(rxn_id, role_id, user_log, score)
+                    else:
+                        system_accept_role_uids.add(role_id)
 
     print(len(role_uids))
     for role_uid in role_uids:

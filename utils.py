@@ -38,7 +38,19 @@ def load_cache_data(folder):
     bios.model_cpd_mapping = model_cpd_mapping
     return bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, model_rxn_mapping, model_rxn_gpr
 
+
 def clear_nan(d):
     for k in d:
         if type(d[k]) == float and pd.isna(d[k]):
             d[k] = ""
+
+
+def fat_load_compound(cpd_id, modelseed_local):
+    res = modelseed_local.get_seed_compound(cpd_id)
+    if res is not None:
+        clear_nan(res.data)
+        if cpd_id in modelseed_local.compound_aliases:
+            res.data['aliases'] = {}
+            for database in modelseed_local.compound_aliases[cpd_id]:
+                res.data['aliases'][database] = list(modelseed_local.compound_aliases[cpd_id][database])
+    return res

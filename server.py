@@ -17,7 +17,7 @@ from utils import load_cache_data, clear_nan
 
 from curation_api import CurationApi
 from escher_factory_api import process_build_data_input, EscherFactoryApi
-from escher_grid_merge import generate_integration_report, merge_with_layer
+
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
 from annotation_api_neo4j import AnnotationApiNeo4j
@@ -71,27 +71,6 @@ def status():
         pass
     return jsonify(res)
 
-
-
-
-@app.route("/escher/cluster", methods=["POST"])
-def escher_cluster_map():
-    cluster_data = request.get_json()
-    #with open('/Users/fliu/workspace/jupyter/data/www/annotation/data/latest_cluster.json', 'w') as f:
-    #    f.write(json.dumps(cluster_data))
-        
-    report = generate_integration_report(cluster_data, escher_manager)
-        
-    return jsonify(report)
-
-@app.route("/escher/merge", methods=["POST"])
-def escher_merge_map():
-    cluster_data = request.get_json()
-    em_merge = merge_with_layer(cluster_data, escher_manager, modelseed_local)
-        
-    return jsonify(em_merge.escher_map)
-
-
 @app.route("/escher/build/grid", methods=["POST"])
 def build_grid_map():
     build_data = request.get_json()
@@ -140,66 +119,43 @@ def post_template_function_rxns(template_id):
     return jsonify(result)
 
 
-@app.route("/template/<template_id>/reaction/<rxn_id>", methods=["POST"])
-def set_annotation_to_template(template_id, rxn_id):
-    #print('!!', request.json)
-    #print('!!', request.data)
-    print(rxn_id, request.form.get('user_id'), request.form.get('function_id'), request.form.get('logic') == 'true', type(request.form.get('logic')))
-
-    annotation_api_atlas.add_function_to_template_rxn(
-        int(request.form.get('function_id')), 
-        rxn_id, 
-        request.form.get('user_id'), 
-        template_id, 
-        request.form.get('logic'))
-    return ""
-
-
-@app.route("/template/<template_id>/annotation/reaction/<rxn_id>/ko/<ko_id>", methods=["POST"])
-def post_template_annotation_reaction_manual_ko(template_id, rxn_id, ko_id):
-    body = request.get_json()
-    o = annotation_api.get_node('KeggOrthology', ko_id)
-    if not o == None:
-        print(o)
-        annotation_api_atlas.set_manual_ko(rxn_id, template_id, ko_id, True, 'fliu')
-        return jsonify(True)
-    return jsonify(False)
-
 @app.route("/template/<template_id>/annotation/reaction/<rxn_id>/status", methods=["POST"])
 def get_template_annotation_reaction_status(template_id, rxn_id):
     t1 = time.time()
     
     body = request.get_json()
     reaction_template_id = '{}@{}'.format(rxn_id, template_id)
-    
-    #genome_set = None
+
+    print('get_template_annotation_reaction_status', body)
+    compartment_config = None
     genome_set_id = None
+    seed_id = rxn_id
+    if seed_id.startswith('rxn'):
+        seed_id = seed_id.split('_')[0]
     if 'genome_set_id' in body and len(body['genome_set_id']) > 0:
         genome_set_id = body['genome_set_id']
-        #genome_set = annotation_api.get_genome_set(body['genome_set_id'])
-    
-    
+    if 'compartment_config' in body:
+        compartment_config = body['compartment_config']
+        print('init', rxn_id, seed_id, compartment_config, template_id)
+        annotation_api_atlas.get_curation_reaction(rxn_id, seed_id, compartment_config, template_id)
+
     t2 = time.time()
-    
-    #print('get_template_annotation_reaction_status', 'body', body)
-    #print('get_template_annotation_reaction_status', 'genome_set', genome_set)
         
     rxn_annotation_manual_function = annotation_api_atlas.get_manual_function(rxn_id, template_id)
     rxn_annotation_manual_ko = annotation_api_atlas.get_manual_ko(rxn_id, template_id)
-    
-    
+
     t3 = time.time()
-    #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_function', rxn_annotation_manual_function)
-    #print('get_template_annotation_reaction_status', 'rxn_annotation_manual_ko', rxn_annotation_manual_ko)
+    # print('get_template_annotation_reaction_status', 'rxn_annotation_manual_function', rxn_annotation_manual_function)
+    # print('get_template_annotation_reaction_status', 'rxn_annotation_manual_ko', rxn_annotation_manual_ko)
     
     rxn_annotation = annotation_api.get_reaction_annotation_data3(
-        rxn_id, genome_set_id, 10, 
+        seed_id, genome_set_id, 10,
         rxn_annotation_manual_ko['ko'],
         rxn_annotation_manual_function['functions'])
     
     t4 = time.time()
     
-    rxn_annotation_curation = annotation_api_atlas.collection_templates_reactions.find_one({'_id' : reaction_template_id})
+    rxn_annotation_curation = annotation_api_atlas.collection_templates_reactions.find_one({'_id': reaction_template_id})
     
     rxn_annotation_functions_rxn = {}
     function_ids = set()
@@ -207,37 +163,46 @@ def get_template_annotation_reaction_status(template_id, rxn_id):
         function_ids.add(rxn_annotation[name]['id'])
     for function_id in function_ids:
         res = annotation_api_atlas.get_rxn_with_function(function_id, template_id)
-        if res == None:
+        if res is None:
             res = {}
         rxn_annotation_functions_rxn[function_id] = res
     
     t5 = time.time()
     
-    rxn = modelseed_local.get_seed_reaction(rxn_id)
-    if rxn == None:
+    rxn = modelseed_local.get_seed_reaction(seed_id)
+    if rxn is None:
         rxn = {}
+    else:
+        rxn = rxn.data
+        clear_nan(rxn)
+
+    # load manual function str
+    rxn_annotation_manual_function['function_values'] = {}
+    for uid in rxn_annotation_manual_function['functions']:
+        if uid not in rxn_annotation_manual_function['function_values']:
+            f = annotation_api.get_function_by_uid(uid)
+            rxn_annotation_manual_function['function_values'][uid] = f.value
         
     t6 = time.time()
     
-    print('get_template_annotation_reaction_status::genome_set', round(t2 - t1, 6))
-    print('get_template_annotation_reaction_status::atlas', round(t3 - t2, 6))
-    print('get_template_annotation_reaction_status::get_reaction_annotation_data', round(t4 - t3, 6))
-    print('get_template_annotation_reaction_status::atlas again', round(t5 - t4, 6))
-    print('get_template_annotation_reaction_status::modelseed_local', round(t6 - t5, 6))
+    #print('get_template_annotation_reaction_status::genome_set', round(t2 - t1, 6))
+    #print('get_template_annotation_reaction_status::atlas', round(t3 - t2, 6))
+    #print('get_template_annotation_reaction_status::get_reaction_annotation_data', round(t4 - t3, 6))
+    #print('get_template_annotation_reaction_status::atlas again', round(t5 - t4, 6))
+    #print('get_template_annotation_reaction_status::modelseed_local', round(t6 - t5, 6))
     print('get_template_annotation_reaction_status::TOTAL', round(t6 - t1, 6))
     
     response = {
-        'rxn' : {rxn_id : clear_nan(rxn.data)},
-        'cpd' : {},
-        'manual_function' : rxn_annotation_manual_function,
-        'manual_ko' : rxn_annotation_manual_ko,
-        'annotation' : rxn_annotation,
-        'curation' : rxn_annotation_curation,
-        'function_rxns' : rxn_annotation_functions_rxn
+        'rxn': {rxn_id: rxn},
+        'cpd': {},
+        'manual_function': rxn_annotation_manual_function,
+        'manual_ko': rxn_annotation_manual_ko,
+        'annotation': rxn_annotation,
+        'curation': rxn_annotation_curation,
+        'function_rxns': rxn_annotation_functions_rxn
     }
     
     response = json.loads(json.dumps(response))
-    #print(response)
     
     return jsonify(response)
 
@@ -326,33 +291,12 @@ def get_rxn_annotation(id):
     
     return jsonify(resp)
 
-@app.route("/model", methods=["GET"])
-def list_models():
-    
-    return jsonify([])
-
-@app.route("/model/<id>/cmp", methods=["GET"])
-def list_model_compartments(id):
-    resp = bios.get_model_compartments(id)
-    
-    return jsonify(resp)
-
-@app.route("/model/<id>/spi", methods=["GET"])
-def list_model_species(id):
-    resp = bios.get_model_species(id)
-    
-    return jsonify(resp)
-
-@app.route("/model/<id>/rxn", methods=["GET"])
-def list_model_reactions(id):
-    resp = bios.get_model_reactions(id)
-    
-    return jsonify(resp)
 
 @app.route("/genome/kbase/<id>", methods=["PUT"])
 def put_genome_from_kbase(id):
     data = request.get_json()
     return jsonify(data)
+
 
 @app.route("/query/genome", methods=["POST"])
 def post_query_genome():
@@ -636,7 +580,7 @@ MODEL_RXN_GPR = None
 
 
 if __name__ == '__main__':
-    with open('config.yaml', 'r') as config_h:    
+    with open('config.yaml', 'r') as config_h:
         config = yaml.load(config_h, Loader=yaml.FullLoader)
         
         CACHE_BASE_FOLDER = config['cache']
@@ -656,7 +600,7 @@ if __name__ == '__main__':
         """
         
     escher_manager = modelseed_escher.EscherManager(escher)
-    #aclient = pymongo.MongoClient('mongodb://192.168.1.21:27017/')
+    #aclient = pymongo.MongoClient('mongodb://192.168.1.15:27017/')
     aclient = pymongo.MongoClient(config['mongo_client'])
     #annotation_api = AnnotationApi(mclient)
     annotation_api_atlas = CurationApi(aclient)
@@ -698,6 +642,6 @@ if __name__ == '__main__':
     import controller_escher
     import controller_ortholog
     import controller_kbase
+    import controller_bios
     
     app.run(port=8058, host='0.0.0.0', debug=False)
-    

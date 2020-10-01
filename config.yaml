@@ -3,6 +3,8 @@ modelseed:
     path: "/opt/data/ModelSEEDDatabase"
 cache: "/opt/annotation/data/"
 mongo_client: "mongodb+srv://server:dx75S3HBXX6h2U3D@bios-dk66o.gcp.mongodb.net/test?retryWrites=true&w=majority"
+bios:
+    host: ""
 neo4j:
     host: "172.18.0.2"
     port: 7687

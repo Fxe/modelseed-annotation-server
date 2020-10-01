@@ -55,7 +55,8 @@ class AnnotationFunction:
     @property
     def value(self):
         return self._value
-        
+
+
 class Neo4jAnnotationFunction(AnnotationFunction):
     
     def __init__(self, node):
@@ -90,13 +91,15 @@ class Neo4jAnnotationFunction(AnnotationFunction):
 
 class AnnotationApiNeo4j:
     
-    def __init__(self, driver=None, user=None, pwd=None, uri=None, port=7474, host="0.0.0.0"):
+    def __init__(self, driver=None, user=None, pwd=None, uri=None,
+                 port=7474, port_bolt=7687, host="0.0.0.0"):
         self.driver = driver
-        self.neo4j_graph = None
+        self.neo4j_graph = Graph("http://neo4j:" + pwd + "@" + host + ":7474")
         self.matcher = NodeMatcher(self.neo4j_graph)
-        if self.driver == None:
-            self.driver = GraphDatabase.driver("bolt://" + host + ":" + str(port), auth=(user, pwd))
-        if self.neo4j_graph == None:
+        self.r_matcher = RelationshipMatcher(self.neo4j_graph)
+        if self.driver is None:
+            self.driver = GraphDatabase.driver("bolt://" + host + ":" + str(port_bolt), auth=(user, pwd))
+        if self.neo4j_graph is None:
             self.neo4j_graph = Graph("http://" + host + ":" + str(port), auth=(user, pwd))
             self.matcher = NodeMatcher(self.neo4j_graph)
 
@@ -816,7 +819,7 @@ class AnnotationApiNeo4j:
         return function_data
     
     def get_reaction_annotation_data3_2(self, rxn_id, kos, 
-                                        genome_set_id = None, genome_set = None, example_genes = 10):
+                                        genome_set_id=None, genome_set=None, example_genes = 10):
         function_data = self.get_ko_function_data3(kos)
         
         #MISSING ADD TEMPLATE DATA
@@ -877,23 +880,23 @@ class AnnotationApiNeo4j:
         return function_data
     
     def get_reaction_annotation_data3(self, rxn_id, genome_set_id = None, example_genes = 10, 
-                                      manual_ko = {}, manual_function = {}):
+                                      manual_ko={}, manual_function = {}):
         
         genome_set = None
-        if not genome_set_id == None:
+        if genome_set_id is not None:
             genome_set = self.get_genome_set(genome_set_id)
         
         selected_kos = set()
         
         rxn_kos = self.get_ko_by_seed_id(rxn_id)
-        if rxn_kos == None:
+        if rxn_kos is None:
             rxn_kos = set()
         selected_kos |= rxn_kos
         
         for ko in manual_ko:
             if manual_ko[ko]:
                 o = self.get_node('KeggOrthology', ko)
-                if not o == None:
+                if o is not None:
                     selected_kos.add(ko)
             elif ko in selected_kos:
                 selected_kos.remove(ko)

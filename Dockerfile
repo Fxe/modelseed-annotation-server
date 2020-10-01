@@ -27,7 +27,7 @@ RUN mkdir -p /opt/build
 RUN git clone https://github.com/Fxe/biosapi.git /opt/build/biosapi
 
 RUN mkdir -p /opt/build
-RUN git clone https://github.com/Fxe/cobrakbase.git /opt/build/cobrakbase
+RUN git clone -b cobra-model https://github.com/Fxe/cobrakbase.git /opt/build/cobrakbase
 
 RUN pip install /opt/build/cobrakbase
 RUN pip install /opt/build/modelseed-escher
