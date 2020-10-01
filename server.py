@@ -632,10 +632,10 @@ if __name__ == '__main__':
     annotation_api.init_constraints()
     
     kbase = cobrakbase.KBaseAPI(config['kbase']['token'])
-    annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
-    annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
-    annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
-    annotation_orth.model_rxn_gpr = MODEL_RXN_GPR
+    #annotation_orth = build_annotation_ortholog(kbase, CACHE_BASE_FOLDER, bios)
+    #annotation_orth.model_rxn_mapping = MODEL_RXN_MAPPING
+    #annotation_orth.model_cpd_mapping = MODEL_CPD_MAPPING
+    #annotation_orth.model_rxn_gpr = MODEL_RXN_GPR
     
     import controller_biochem
     import controller_annotation

@@ -52,20 +52,28 @@ def flask_save_object(workspace, object_id):
 @app.route("/kbase/export/template", methods=["PUT"])
 def flask_export_template():
     data = request.get_json()
-    print(data)
+
     token = data.get('token')
     input_workspace = data.get('input_workspace')
     input_id = data.get('input_id')
     output_workspace = data.get('output_workspace')
     output_id = data.get('output_id')
     annotation_namespace = data.get('annotation_namespace')
+    clear_roles = data.get('clear_roles')
+    clear_complexes = data.get('clear_complexes')
+    clear_reactions = data.get('clear_reactions')
+    rxn_ids = data.get('rxn_ids')
     if token is None:
         abort(400)
     api = KBaseAPI(token)
 
     input_template = api.get_from_ws(input_id, input_workspace)
     output_template = export_template(input_template, modelseed_local, annotation_api,
-                                      annotation_api_atlas.database, annotation_namespace)
+                                      annotation_api_atlas.database, annotation_namespace,
+                                      reaction_list=rxn_ids,
+                                      clear_reactions=clear_reactions,
+                                      clear_complexes=clear_complexes,
+                                      clear_roles=clear_roles)
 
     result = api.save_object(output_id, output_workspace, 'KBaseFBA.NewModelTemplate', output_template.get_data())
 
