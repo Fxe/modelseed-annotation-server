@@ -9,7 +9,8 @@ def post_biochem_depict(structure_type, output_format):
     
     chemdust = ChemDUST(CHEMDUST_URL)
     svg_depict = chemdust.get_depict(data['structure'], structure_type, output_format)
-    
+
+
     return svg_depict
 
 

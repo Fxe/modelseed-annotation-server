@@ -16,7 +16,6 @@ import biosapi
 from utils import load_cache_data, clear_nan
 
 from curation_api import CurationApi
-from escher_factory_api import process_build_data_input, EscherFactoryApi
 
 from annotation_ortholog import build_annotation_ortholog, AnnotationOrtholog
 from annotation_api import AnnotationApi
@@ -70,32 +69,6 @@ def status():
     except:
         pass
     return jsonify(res)
-
-@app.route("/escher/build/grid", methods=["POST"])
-def build_grid_map():
-    build_data = request.get_json()
-    print(build_data)
-    map_assembly = process_build_data_input(build_data['maps'])
-    grid_x = build_data['x']
-    grid_y = build_data['y']
-    print(map_assembly)
-    
-    escher_factory = EscherFactoryApi(escher_manager)
-    escher_factory.model_path = CACHE_BASE_FOLDER
-    escher_factory.cpd_mapping = MODEL_CPD_MAPPING
-    escher_factory.rxn_mapping = MODEL_RXN_MAPPING
-    escher_factory.cmp_mapping = MODEL_CMP_MAPPING
-    escher_factory.bios_cache = bios.model_data
-    
-    master = escher_factory.build_grid(map_assembly, (grid_x, grid_y))
-    #print(content)
-    #build_data = request.json
-        
-    #[ "iMM904;c;c;ModelSEED.NAD(P) Biosynthesis", "iMM904;c;c;ModelSEED.Pentose and Glucuronate Interconversions", "iMM904;c;c;ModelSEED.Mannitol Utilization", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.NAD(P) Biosynthesis", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Pentose and Glucuronate Interconversions", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Mannitol Utilization" ]
-    
-    #base = '/Users/fliu/Library/Caches/escher/1-0-0/5/maps/'
-    #m = escher_manager.get_map('ModelSEED', 'ModelSEED', 'Chorismate Synthesis')
-    return jsonify(master.escher_map)
 
 
 @app.route("/template/<template_id>/reaction/<rxn_id>", methods=["GET"])
@@ -458,116 +431,6 @@ def post_query_ko():
 #    data = request.get_json()
 #    return jsonify(data)
 
-def get_functional_roles(ko_id):
-    functions = {}
-    doc = mdb_kbase_ko_to_genes.find_one({'_id' : ko_id})
-    gene_mapping = doc['genes']
-    for tup in gene_mapping:
-        print(tup)
-        kbase_genome = mdb_kbase_genomes.find_one({'_id' : tup[0]})
-        genome = cobrakbase.core.KBaseGenome(kbase_genome)
-        features = list(filter(lambda f : f['id'] == tup[1], genome.data['features']))
-        if len(features) == 1:
-            if not 'function' in features[0]:
-                features[0]['function'] = 'null'
-            if not features[0]['function'] in functions:
-                functions[features[0]['function']] = set()
-            functions[features[0]['function']].add((tup[0], tup[1]))
-        else:
-            print('error', tup)
-    return functions
-
-def get_functional_roles2(ko_id, annotation_api):
-    functions = {}
-    doc = mdb_kbase_ko_to_genes.find_one({'_id' : ko_id})
-    if doc == None:
-        return {}, {}, {}
-    gene_mapping = doc['genes']
-    
-    found = 0
-    for tup in gene_mapping:
-        gene_id = "{}@{}".format(tup[1], tup[0])
-        gene_functions = annotation_api.collection_gene_functions.find_one({'_id' : gene_id})
-        
-        if not gene_functions == None:
-            found += 1
-            for annotation_id in gene_functions['function']:
-                function_id = gene_functions['function'][annotation_id]
-                if not function_id in functions:
-                    functions[function_id] = set()
-                functions[function_id].add(gene_id)
-
-    functions_data = {}
-    
-    for function_id in functions:
-        function_doc = annotation_api.collection_functions.find_one({'_id' : function_id})
-        if not function_doc == None:
-            functions_data[function_id] = function_doc
-    
-    return functions, functions_data, {'total' : len(gene_mapping), 'has_function' : found}
-
-def get_reaction_annotation_data(rxn_id):
-    kos = annotation_api.get_ko_by_seed_id(rxn_id)
-    function_data = {}
-    for ko in kos:
-        #print(ko)
-        functions, functions_data, metadata = get_functional_roles2(ko, annotation_api)
-        print(ko, metadata)
-        for f in functions:
-            function = functions_data[f]['value']
-            if not function in function_data:
-                function_data[function] = {
-                    'id' : f,
-                    'hits' : []
-                }
-            function_data[function]['hits'].append({
-                'score' : len(functions[f]),
-                'source' : ['KEGG', ko]
-            })
-    for template_doc in annotation_api.collection_templates.find():
-        if rxn_id in template_doc['reactions']:
-            template_id = template_doc['_id']
-            template_reaction_doc = template_doc['reactions'][rxn_id]
-            for and_rule in template_reaction_doc['functions']:
-                for function_id in and_rule:
-                    function_doc = annotation_api.collection_functions.find_one({'_id' : function_id})
-                    function = function_doc['value']
-                    if not function in function_data:
-                        function_data[function] = {
-                            'id' : function_id,
-                            'hits' : []
-                        }
-                    function_data[function]['hits'].append({
-                        'score' : 0,
-                        'source' : ['template', template_id]
-                    })
-                    #print(template_id, function_doc['value'])
-        
-    for function in function_data:
-        function_id = function_data[function]['id']
-        #print(function_id)
-        function_doc = annotation_api.collection_functions.find_one({'_id' : function_id})
-        function_metadata = annotation_api.collection_functions_data.find_one({'_id' : function_id})
-        
-        subsystem_tags = {}
-        if 'subsystem' in function_doc:
-            for subsystem_tag in function_doc['subsystem']:
-                subsystem_tags[subsystem_tag] = [function_doc['subsystem'][subsystem_tag]]
-                if 'subsystem_class' in function_doc and subsystem_tag in function_doc['subsystem_class']:
-                    subsystem_tags[subsystem_tag].append(function_doc['subsystem_class'][subsystem_tag])
-        #print(subsystem_tags)
-        
-        
-        source_tags = {}
-        if not function_metadata == None:
-            sources = function_metadata['sources']
-            for s in sources:
-                source_tags[s] = [len(sources[s]['genomes']), len(sources[s]['genes']), sources[s]['genes'][:10]]
-            #print(source_tags)
-        function_data[function]['sources'] = source_tags
-        function_data[function]['subsystems'] = subsystem_tags
-    return function_data
-
 escher_manager = None
 annotation_api = None
 annotation_orth = None
@@ -643,5 +506,6 @@ if __name__ == '__main__':
     import controller_ortholog
     import controller_kbase
     import controller_bios
+    import controller_optimization
     
     app.run(port=8058, host='0.0.0.0', debug=False)

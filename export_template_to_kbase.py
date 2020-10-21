@@ -8,13 +8,68 @@ from cobrakbase.core.kbasefba.new_template_reaction import NewModelTemplateReact
 logger = logging.getLogger(__name__)
 
 
+def get_user(user_log):
+    res = None
+    last = 0
+    for user_id in user_log:
+        if user_log[user_id][1] > last:
+            last = user_log[user_id][1]
+            res = user_id
+    return res
+
+
+def filter_ignore(accept, ignore):
+    res = {}
+    for rxn_id in accept:
+        if rxn_id not in ignore:
+            res[rxn_id] = accept[rxn_id]
+        else:
+            res[rxn_id] = set(accept[rxn_id]) - ignore[rxn_id]
+    return res
+
+
+def get_ignore_set_of_non_modelseed(reaction_annotation, template, annotation_api):
+    old_rxn_ids = set(map(lambda x: x.id, template.reactions))
+    ignore = {}
+    for rxn_id in reaction_annotation:
+        if rxn_id in old_rxn_ids:
+            ignore[rxn_id] = set()
+            trxn = template.reactions.get_by_id(rxn_id)
+            id_to_source = {}
+            for role_id in trxn.get_roles():
+                role = template.roles.get_by_id(role_id)
+                f = annotation_api.get_function(role['name'])
+                id_to_source[f.id] = role['source']
+            for k in reaction_annotation[rxn_id]['current']:
+                #function = annotation_api.get_function_by_uid(k)
+                #score = reaction_annotation['fungi'][rxn_id]['current'][k]
+                a = reaction_annotation[rxn_id]['user'][int(k)]
+                user_id = get_user(a)
+                if int(k) in id_to_source:
+                    if user_id == 'system' and not id_to_source[int(k)] == 'ModelSEED':
+                        ignore[rxn_id].add(k)
+                        #print(rxn_id, k, score, user_id, id_to_source[int(k)], function.value)
+                #print(k, score, a, function.value, id_to_source[int(k)])
+    return ignore
+
+
 def export_template(template_o, modelseed, annotation_api, mongo_database,
                     annotation_namespace='fungi',
                     reaction_list=None,
-                    clear_reactions=False, clear_complexes=False, clear_roles=False):
-    
+                    clear_reactions=False, clear_complexes=False, clear_roles=False, scores=None):
+    if scores is None:
+        scores = {
+            # 'opt_score3', # *
+            # 'opt_score2', # **
+            'opt_score1'  # ***
+        }
+    logger.info("copy template")
     data_copy = copy.deepcopy(template_o.get_data())
     template = NewModelTemplate(data_copy, template_o.info, None, 'tftr', 'tcpx')
+
+    logger.info("find non ModelSEED annotation to ignore")
+    tc = TemplateCuration(template, mongo_database, annotation_api)
+    ignore = get_ignore_set_of_non_modelseed(tc.get_reaction_annotation()[annotation_namespace], template, annotation_api)
 
     tm = TemplateManipulator(template, None)
     template_reactions_filter = tm.clean_template('ModelSEED')
@@ -52,7 +107,6 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
         for trxn in template.reactions:
             trxn.templatecomplex_refs.clear()
 
-
     tc = TemplateCuration(template, mongo_database, annotation_api)
     tm = TemplateManipulator(template, modelseed)
     a = tc.get_reaction_annotation()
@@ -64,33 +118,22 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
     for k in search_name_to_role_id:
         if len(search_name_to_role_id[k]) > 1:
             print(k)
-    accept, remove = tc.get_curation_data(annotation_namespace)
+    accept, remove = tc.get_curation_data(annotation_namespace, scores)
+    accept = filter_ignore(accept, ignore)
     if reaction_list is not None:  # filter curation actions if reaction list is provided
         accept = dict(filter(lambda x: x[0] in reaction_list, accept.items()))
         remove = dict(filter(lambda x: x[0] in reaction_list, remove.items()))
     test_accept = dict(filter(lambda x: len(x[1]) > 0, accept.items()))
     test_remove = dict(filter(lambda x: len(x[1]) > 0, remove.items()))
 
-    # add new roles to template
-
+    logger.info("add new roles to template")
     test_accept_sn_to_roles = tc.get_roles_to_add(test_accept, search_name_to_role_id)
     for role_sn in test_accept_sn_to_roles:
         role_name = list(test_accept_sn_to_roles[role_sn])[0]
         template.add_role(role_name)
     search_name_to_role_id = tm.get_search_name_to_role_id()
 
-    def get_compartment_token(cmp_config):
-        v = cmp_config.values()
-        if len(v) == 1:
-            return list(v)[0]
-        if len(v) == 2:
-            if 'e' in v and 'c' in v:
-                return 'c'
-            elif 'c' in v:
-                return list(filter(lambda x: not x == 'c', v))[0]
-        return None
-
-    # remove all reactions exclude from template
+    logger.info("remove reactions marked as exclude from template")
     remove_reactions = tc.get_disabled_reactions(annotation_namespace)
 
     reactions_in_template = set(map(lambda x: x.id, template.reactions))
@@ -101,7 +144,7 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
             trxn = template.get_reaction(trxn_id)
             trxn.templatecomplex_refs.clear()
 
-    # add new reactions
+    logger.info("add new reactions")
     reactions_to_add = []
     for doc in tc.curation_api['templates_reactions'].find():
         template_rxn_id, template_id = doc['_id'].split('@')
@@ -113,7 +156,18 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
                         'seed__DOT__reaction' in doc['annotation']:
                     seed_id = doc['annotation']['seed__DOT__reaction']
                     trxn_b = tm.build_template_reaction_from_modelseed(seed_id, doc['cmp'])
-                    reactions_to_add.append(NewModelTemplateReaction(trxn_b))
+                    allowed_cmp = {'c', 'e'}  # TODO: TEMPORARY HACK TO AVOID BAD TEMPLATES
+                    valid = True
+                    for token_id in doc['cmp']:
+                        if doc['cmp'][token_id] not in allowed_cmp:
+                            valid = False
+                    if not len(template_rxn_id) == 10:
+                        valid = False
+                    if trxn_b is not None and valid:
+                        reactions_to_add.append(NewModelTemplateReaction(trxn_b))
+                    else:
+                        logger.error("unable to build reaction: %s %s", doc['_id'], doc['cmp'])
+
     template.reactions += reactions_to_add
     reactions_in_template = set(map(lambda x: x.id, template.reactions))
 

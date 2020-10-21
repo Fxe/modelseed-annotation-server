@@ -1,7 +1,7 @@
 import logging
 import json
 import jsonpickle
-from annotation_api_neo4j import AnnotationApiNeo4j
+from annotation_api_neo4j import AnnotationApiNeo4j, AnnotationFunction
 from neo4j import GraphDatabase
 from py2neo import Graph, NodeMatcher, RelationshipMatcher
 
@@ -22,9 +22,9 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
             self.matcher = NodeMatcher(self.neo4j_graph)
         self.cache = cache
         
-    def set_cache(self, cache_key, data, expire_sec = 86400):
+    def set_cache(self, cache_key, data, expire_sec=86400):
         logger.debug('set_cache [%s]', cache_key)
-        if data == None or len(data) == 0:
+        if data is None or len(data) == 0:
             return False
         self.cache.set(cache_key, jsonpickle.encode(data))
         return self.cache.expire(cache_key, expire_sec)
@@ -53,7 +53,7 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
         return fcount
 
     def set_cache_get_function_count(self, gene_function, data, expire_sec = 86400):
-        if data == None or len(data) == 0:
+        if data is None or len(data) == 0:
             return False
         cache_key = 'neo4j:' + str(gene_function.id)
         fcount_wrap = {}
@@ -85,15 +85,45 @@ class AnnotationApiRedisCache(AnnotationApiNeo4j):
 
         return set(data.decode('utf-8').split('#'))
 
-    def set_cache_get_genome_set(self, genome_set_id, data, expire_sec = 86400):
-        if data == None or len(data) == 0:
+    def set_cache_get_genome_set(self, genome_set_id, data, expire_sec=86400):
+        if data is None or len(data) == 0:
             return False
         cache_key = 'genome_set:' + genome_set_id
         self.cache.set(cache_key, '#'.join(data))
         return self.cache.expire(cache_key, expire_sec)
+
+    def get_function(self, function_value):
+        logger.debug('get_function::cache lookup')
+        cache_key = 'function:' + str(function_value)
+        res = self.get_cache(cache_key)
+        if res:
+            logger.debug('get_function::cache return')
+            annotation_function = AnnotationFunction.from_json(res)
+            return annotation_function
+
+        logger.debug('get_function::cache not found get live')
+        res = super().get_function(function_value)
+        logger.debug('get_function::cache live data')
+        self.set_cache(cache_key, res.get_data(), 604800)  # 604800 1 Week
+        return res
+
+    def get_function_by_uid(self, function_id):
+        logger.debug('get_function_by_uid::cache lookup')
+        cache_key = 'function_uid:' + str(function_id)
+        res = self.get_cache(cache_key)
+        if res:
+            logger.debug('get_function_by_uid::cache return')
+            annotation_function = AnnotationFunction.from_json(res)
+            return annotation_function
+
+        logger.debug('get_function_by_uid::cache not found get live')
+        res = super().get_function_by_uid(function_id)
+        logger.debug('get_function_by_uid::cache live data')
+        self.set_cache(cache_key, res.get_data(), 604800)  # 604800 1 Week
+        return res
     
     def get_genome_set(self, genome_set_id):
-        if genome_set_id == None:
+        if genome_set_id is None:
             return None
         logger.debug('get_genome_set::cache lookup')
         res = self.get_cache_get_genome_set(genome_set_id)

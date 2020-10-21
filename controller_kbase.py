@@ -1,7 +1,10 @@
 import logging
+import json
 from __main__ import app, modelseed_local, annotation_api, annotation_api_atlas
 from flask import request, jsonify, abort
+import cobra
 from cobrakbase import KBaseAPI
+from cobrakbase.core.kbasefba.fbamodel_builder import FBAModelBuilder
 from export_template_to_kbase import export_template
 
 logger = logging.getLogger(__name__)
@@ -9,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @app.route("/kbase/reference_info/<reference>", methods=["GET"])
 def flask_get_reference_info(reference):
-    token = request.args.get('token')
+    token = request.headers.get('Authorization')
     if token is None:
         abort(400)
     api = KBaseAPI(token)
@@ -19,7 +22,7 @@ def flask_get_reference_info(reference):
 
 @app.route("/kbase/ws/<workspace>", methods=["GET"])
 def flask_list_workspace(workspace):
-    token = request.args.get('token')
+    token = request.headers.get('Authorization')
     if token is None:
         abort(400)
     api = KBaseAPI(token)
@@ -29,18 +32,67 @@ def flask_list_workspace(workspace):
 
 @app.route("/kbase/ws/<workspace>/<object_id>", methods=["GET"])
 def flask_get_object(workspace, object_id):
-    token = request.args.get('token')
+    token = request.headers.get('Authorization')
     if token is None:
         abort(400)
     api = KBaseAPI(token)
+
+    if workspace == 'none':
+        workspace = None
+        object_id = object_id.replace('_', '/')
+
     result = api.get_object(object_id, workspace)
     return jsonify(result)
+
+
+@app.route("/kbase/ws/<workspace_id>/<object_id>/<object_version>", methods=["GET"])
+def flask_get_object_ref(workspace_id, object_id, object_version):
+    token = request.headers.get('Authorization')
+    if token is None:
+        abort(400)
+    api = KBaseAPI(token)
+
+    result = api.get_object("{}/{}/{}".format(workspace_id, object_id, object_version), None)
+    return jsonify(result)
+
+
+@app.route("/kbase/cobra/<workspace>/<object_id>", methods=["GET"])
+def flask_get_cobra_model(workspace, object_id):
+    token = request.headers.get('Authorization')
+    if token is None:
+        abort(400)
+    api = KBaseAPI(token)
+
+    if workspace == 'none':
+        workspace = None
+        object_id = object_id.replace('_', '/')
+
+    model = api.get_from_ws(object_id, workspace)
+    model_json = json.loads(cobra.io.to_json(model))
+
+    return jsonify(model_json)
+
+
+@app.route("/kbase/convert/fbamodel", methods=["POST"])
+def flask_convert_kbase_to_cobra_model():
+    data = request.get_json()
+
+    if 'model' not in data:
+        abort(400)
+
+    kbase_model = data['model']
+
+    b = FBAModelBuilder.from_kbase_json(kbase_model, y, None).build()
+    model = b.build()
+    model_json = json.loads(cobra.io.to_json(model))
+
+    return jsonify(model_json)
 
 
 @app.route("/kbase/ws/<workspace>/<object_id>", methods=["PUT"])
 def flask_save_object(workspace, object_id):
     data = request.get_json()
-    token = request.args.get('token')
+    token = request.headers.get('Authorization')
     if token is None or 'object_type' not in data or 'object_data' not in data:
         abort(400)
     api = KBaseAPI(token)
@@ -53,7 +105,7 @@ def flask_save_object(workspace, object_id):
 def flask_export_template():
     data = request.get_json()
 
-    token = data.get('token')
+    token = request.headers.get('Authorization')
     input_workspace = data.get('input_workspace')
     input_id = data.get('input_id')
     output_workspace = data.get('output_workspace')

@@ -1,13 +1,17 @@
 import logging
+import json
+import cobra
 from modelseed_escher.model.escher_from_modelseed import EscherModelSEEDFactory
 from modelseed_escher.core import EscherMap
 from modelseed_escher.map.model_merge import RefitMap
-from __main__ import app, escher_manager, modelseed_local
+from biosapi.io.bios_model_builder import BiosModelToCobraBuilder
+from __main__ import app, escher_manager, modelseed_local, bios
 from flask import request, jsonify, abort
 from escher_grid_merge import generate_integration_report, merge_with_layer
-import json
 
 logger = logging.getLogger(__name__)
+
+BIOCHEM_CACHE = {}
 
 
 @app.route("/escher/dataset", methods=["GET"])
@@ -96,7 +100,64 @@ def escher_merge_map():
 @app.route("/escher/biochem", methods=["POST"])
 def flask_escher_build_biochem():
     params = request.get_json()
+
+    if frozenset(params['cmp_config'].items()) in BIOCHEM_CACHE:
+        print('flask_escher_build_biochem::from cache')
+        return jsonify(BIOCHEM_CACHE[frozenset(params['cmp_config'].items())])
+
     f = EscherModelSEEDFactory(modelseed_local)
     f.cmp_config = params['cmp_config']
     model = f.build()
+    if model:
+        BIOCHEM_CACHE[frozenset(params['cmp_config'].items())] = model
+    print('flask_escher_build_biochem::from build')
     return jsonify(model)
+
+
+@app.route("/escher/biochem/<biochem_type>/<biochem_id>", methods=["POST"])
+def flask_escher_build_biochem_model(biochem_type, biochem_id):
+    params = request.get_json()
+    if biochem_type == 'database':
+        if biochem_id == 'modelseed':
+            f = EscherModelSEEDFactory(modelseed_local)
+            f.cmp_config = params['cmp_config']
+            model = f.build()
+            return jsonify(model)
+        else:
+            abort(400)
+    elif biochem_type == 'sbml':
+        b = BiosModelToCobraBuilder.from_api(biochem_id, bios)
+        model = b.build()
+        model = json.loads(cobra.io.to_json(model))
+        return jsonify(model)
+    else:
+        abort(400)
+
+
+@app.route("/escher/build/grid", methods=["POST"])
+def build_grid_map():
+    from escher_factory_api import process_build_data_input, build_escher_factory_api
+    build_data = request.get_json()
+    print(build_data)
+    map_assembly = process_build_data_input(build_data['maps'])
+    grid_x = build_data['x']
+    grid_y = build_data['y']
+    print(map_assembly)
+
+    model_ids = set(map(lambda x: x['sbml_id'], map_assembly))
+    escher_factory = build_escher_factory_api(model_ids, escher_manager, bios, 'ModelSeed', 3, 'ModelSeedReaction', 3)
+    #escher_factory.model_path = CACHE_BASE_FOLDER
+    #escher_factory.cpd_mapping = MODEL_CPD_MAPPING
+    #escher_factory.rxn_mapping = MODEL_RXN_MAPPING
+    #escher_factory.cmp_mapping = MODEL_CMP_MAPPING
+    #escher_factory.bios_cache = bios.model_data
+
+    master = escher_factory.build_grid(map_assembly, (grid_x, grid_y))
+    # print(content)
+    # build_data = request.json
+
+    # [ "iMM904;c;c;ModelSEED.NAD(P) Biosynthesis", "iMM904;c;c;ModelSEED.Pentose and Glucuronate Interconversions", "iMM904;c;c;ModelSEED.Mannitol Utilization", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.NAD(P) Biosynthesis", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Pentose and Glucuronate Interconversions", "iJDZ836;CCO__45__CYTOSOL;c;ModelSEED.Mannitol Utilization" ]
+
+    # base = '/Users/fliu/Library/Caches/escher/1-0-0/5/maps/'
+    # m = escher_manager.get_map('ModelSEED', 'ModelSEED', 'Chorismate Synthesis')
+    return jsonify(master.escher_map)

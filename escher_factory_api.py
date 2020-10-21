@@ -240,7 +240,7 @@ def remap_map_reactions2(em, bigg_to_seed_rxn, map_compound_remap, exclude,
                 rxn_cstoich = get_rxn(db_id)
                 logger.debug('[%s]:%s rxn_cstoich: %s', map_node_id, db_id, rxn_cstoich)
                 #print(rxn_cstoich)
-                if rxn_cstoich != None:
+                if rxn_cstoich is not None:
                     to_match = set(map(lambda x : to_match_func(x[0]), rxn_cstoich.keys()))
                     
                     #print(to_match)
@@ -274,20 +274,66 @@ def remap_map_reactions2(em, bigg_to_seed_rxn, map_compound_remap, exclude,
     #print('remap_map_reactions', map_reaction_remap, unmaped_rxn)
     return map_reaction_remap, unmaped_rxn
 
+
+def build_escher_factory_api(model_ids, escher_manager, bios,
+                             database_cpd='ModelSeed',
+                             min_score_cpd=5,
+                             database_rxn='ModelSeedReaction',
+                             min_score_rxn=5):
+    cmp_mapping = {}
+    cpd_mapping = {}
+    rxn_mapping = {}
+    for model_id in model_ids:
+        mm = biosapi.BiosModelMapper(bios, model_id)
+        cmp_mapping[model_id] = {}
+        cpd_mapping[model_id] = {}
+        rxn_mapping[model_id] = {}
+
+        for o in mm.cmp:
+            if 'bios_scmp_entry' in o:
+                cmp_mapping[model_id][o['bios_scmp_entry']] = o['id']
+
+        spi_annotation = mm.get_spi_annotation(database_cpd, min_score_cpd)
+        for uid in mm.spi:
+            spi = mm.spi[uid]
+            spi_cmp = spi['compartment']
+            sid = spi['id']
+            if spi_cmp not in cpd_mapping[model_id]:
+                cpd_mapping[model_id][spi_cmp] = {}
+            cpd_mapping[model_id][spi_cmp][sid] = []
+            if sid in spi_annotation:
+                cpd_mapping[model_id][spi_cmp][sid].append(spi_annotation[sid])
+        rxn_annotation = mm.get_rxn_annotation(database_rxn, min_score_rxn)
+        for sid in rxn_annotation:
+            rxn_mapping[model_id][sid] = [rxn_annotation[sid]]
+
+    factory = EscherFactoryApi(escher_manager)
+    factory.bios_api = bios
+    factory.cmp_mapping = cmp_mapping
+    factory.cpd_mapping = cpd_mapping
+    factory.rxn_mapping = rxn_mapping
+    return factory
+
             
 class EscherFactoryApi:
     
     def __init__(self, escher_manager):
         self.escher_manager = escher_manager
+        self.cmp_mapping = {}
         self.cpd_mapping = {}
         self.rxn_mapping = {}
         self.bios_cache = {}
+        self.bios_api = None
         self.cpd_match_exclude = set()
         
     def get_model_reaction(self, sbml_id, rxn_id):
+        if self.bios_api and sbml_id not in self.bios_cache:
+            self.bios_cache[sbml_id] = {}
+            self.bios_cache[sbml_id]['rxn'] = self.bios_api.get_model_reactions(sbml_id)
+
         if sbml_id in self.bios_cache:
             all_rxns = self.bios_cache[sbml_id]['rxn']
-            m = list(filter(lambda x : x['id'] == rxn_id, all_rxns))
+            m = list(filter(lambda x: x['id'] == rxn_id, all_rxns))
             if len(m) == 1:
                 rxn = biosapi.core.model.BiosModelReaction(m[0])
                 cstoich = rxn.cstoichiometry
@@ -331,7 +377,7 @@ class EscherFactoryApi:
         return res
     
     def lambda_get_model_reaction(self, sbml_id):
-        return lambda x : self.get_model_reaction(sbml_id, x)
+        return lambda x: self.get_model_reaction(sbml_id, x)
     
     def translate_to_model2(self, escher_model_id, escher_map_id, sbml_id, target_cmp, cpd_mapping, rxn_mapping, cmp_mapping = {}):
         em = self.escher_manager.get_map('ModelSEED', escher_model_id, escher_map_id)
@@ -417,13 +463,15 @@ class EscherFactoryApi:
         test.swap_ids(cpd_remap, rxn_remap)
         return test
     
-    
     def get_model(self, model_id):
         model = None
-        model_path = self.model_path + '/TempModels/' + model_id + '.json'
-        if os.path.exists(model_path):
-            with open(model_path, 'r') as fh:
-                model = cobra.io.from_json(fh.read())
+        if self.bios_api:
+            model = biosapi.io.bios_model_builder.BiosModelToCobraBuilder.from_api(model_id, self.bios_api).build()
+        else:
+            model_path = self.model_path + '/TempModels/' + model_id + '.json'
+            if os.path.exists(model_path):
+                with open(model_path, 'r') as fh:
+                    model = cobra.io.from_json(fh.read())
         return model
     
     def build_grid(self, map_assembly, grid_setup):
@@ -445,19 +493,18 @@ class EscherFactoryApi:
             
             logger.warning('translate_to_model: %s [%s > %s]', sbml_id, cmp_sbml, target_cmp)
             em_ = self.translate_to_model2(escher_model_id, 
-                                                    escher_map_id, 
-                                                    sbml_id,
-                                                    target_cmp,
-                                                    cpd_mapping,
-                                                    rxn_mapping,
-                                          cmp_mapping)
+                                           escher_map_id,
+                                           sbml_id,
+                                           target_cmp,
+                                           cpd_mapping,
+                                           rxn_mapping,
+                                           cmp_mapping)
             model = self.get_model(sbml_id)
-            if not model == None:
+            if model is not None:
                 validate_map_with_model(em_, model)
             else:
                 logger.warning('unable to get model: %s', sbml_id)
-            
-            
+
             em_list.append(em_)
         builder = modelseed_escher.EscherGrid()
         master = builder.build(em_list, grid_setup)

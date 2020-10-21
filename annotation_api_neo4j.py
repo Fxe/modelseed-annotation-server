@@ -42,19 +42,44 @@ def process_dict(d):
             logger.debug('excluded: %s -> %s', k, type(d[k]))
     return props
 
+
 class AnnotationFunction:
     
-    def __init__(self, id, value):
-        self.id = id
+    def __init__(self, function_id, value):
+        self.id = function_id
         self._value = value
         self.search_value = value
         self.synonyms = set()
         self.sub_functions = set()
         self.function_group = set()
-        
+        self.source = set()
+
+    @staticmethod
+    def from_json(data):
+        annotation_function = AnnotationFunction(data['id'], data['value'])
+        annotation_function.search_value = data['search_value']
+        annotation_function.synonyms |= set(data['synonyms'])
+        annotation_function.function_group |= set(data['function_group'])
+        annotation_function.source |= set(data['source'])
+        for o in data['sub_functions']:
+            sub_function = AnnotationFunction.from_json(o)
+            annotation_function.sub_functions.add(sub_function)
+        return annotation_function
+
     @property
     def value(self):
         return self._value
+
+    def get_data(self):
+        return {
+            'id': self.id,
+            'value': self._value,
+            'search_value': self.search_value,
+            'synonyms': list(sorted(self.synonyms)),
+            'function_group': list(sorted(self.function_group)),
+            'sub_functions': list(map(lambda x: x.get_data(), self.sub_functions)),
+            'source': list(sorted(self.source))
+        }
 
 
 class Neo4jAnnotationFunction(AnnotationFunction):
@@ -62,7 +87,6 @@ class Neo4jAnnotationFunction(AnnotationFunction):
     def __init__(self, node):
         super().__init__(node.identity, node['key'])
         self.node = node
-        #print(node)
         self.populate_from_graph()
         
     def populate_from_graph(self):
@@ -81,9 +105,8 @@ class Neo4jAnnotationFunction(AnnotationFunction):
                 self.function_group.add(n['key'])
 
     def neo4j_load_source(self):
-        self.source = set()
-        for srel in self.node.graph.match((self.node, ), r_type="has_source", ):
-            self.source.add(srel.end_node['key'])
+        for rel in self.node.graph.match((self.node, ), r_type="has_source", ):
+            self.source.add(rel.end_node['key'])
         return self.source
                 
     def __str__(self):
@@ -129,13 +152,13 @@ class AnnotationApiNeo4j:
                 
     def get_function(self, f):
         n = self.matcher.match("Function", key=f).first()
-        if n == None:
+        if n is None:
             return None
         return Neo4jAnnotationFunction(n)
     
     def get_function_by_uid(self, function_id):
         n = self.neo4j_graph.nodes[int(function_id)]
-        if n == None or not 'Function' in n.labels:
+        if n is None or 'Function' not in n.labels:
             return None
         return Neo4jAnnotationFunction(n)
                 
@@ -156,7 +179,7 @@ class AnnotationApiNeo4j:
     def get_genome(self, genome_id):
         return self.get_node('RefSeqGenome', genome_id)
     
-    def get_annotation_function(self, function_str, search_str = False):
+    def get_annotation_function(self, function_str, search_str=False):
         node = None
         if search_str:
             nfunction_str = normalize_role(function_str)
