@@ -79,16 +79,6 @@ def get_template_reaction_attributes(template_id, rxn_id):
     return jsonify(data)
 
 
-def export_template_to_kbase(workspace, object_id):
-    token = request.args.get('token')
-    if token is None:
-        abort(400)
-    api = KBaseAPI(token)
-    template_o = api.get_object('GramNegModelTemplateV2', 'NewKBaseModelTemplates')
-    template = NewModelTemplate(copy.deepcopy(template_o), 'tftr', 'tcpx')
-    return 0
-
-
 @app.route("/template/<template_id>/annotation/reaction/<rxn_id>/ko/<ko_id>", methods=["POST"])
 def post_template_annotation_reaction_manual_ko(template_id, rxn_id, ko_id):
     body = request.get_json()

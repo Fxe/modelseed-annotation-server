@@ -1,0 +1,55 @@
+Name	rxn_id	cpd_id	coeff	cmp
+Photosystem II	crxn00001	cpd00067	-4	0
+Photosystem II	crxn00001	cpd11632	-4	1
+Photosystem II	crxn00001	cpd07274	-2	3
+Photosystem II	crxn00001	cpd16503	2	3
+Photosystem II	crxn00001	cpd00001	-2	2
+Photosystem II	crxn00001	cpd00007	1	2
+Photosystem II	crxn00001	cpd00067	4	2
+Plastoquinone:cytochrome b6 oxidoreductase	crxn00002	cpd16503	-1	1
+Plastoquinone:cytochrome b6 oxidoreductase	crxn00002	cpd12265	-2	0
+Plastoquinone:cytochrome b6 oxidoreductase	crxn00002	cpd00067	2	0
+Plastoquinone:cytochrome b6 oxidoreductase	crxn00002	cpd12239	2	0
+Plastoquinone:cytochrome b6 oxidoreductase	crxn00002	cpd07274	1	1
+Photosystem I	crxn00003	cpd11632	-1	1
+Photosystem I	crxn00003	cpd12239	-1	2
+Photosystem I	crxn00003	cpd11621	-1	0
+Photosystem I	crxn00003	cpd12265	1	2
+Photosystem I	crxn00003	cpd11620	1	0
+Ferredoxin-NADP reductase	crxn00004	cpd11620	-2	0
+Ferredoxin-NADP reductase	crxn00004	cpd00006	-1	0
+Ferredoxin-NADP reductase	crxn00004	cpd00067	-1	0
+Ferredoxin-NADP reductase	crxn00004	cpd00005	1	0
+Ferredoxin-NADP reductase	crxn00004	cpd11621	2	0
+Succinate Dehydrogenase (Plastoquinone)	crxn00005	cpd00106	-1	0
+Succinate Dehydrogenase (Plastoquinone)	crxn00005	cpd00036	1	0
+Succinate Dehydrogenase (Plastoquinone)	crxn00005	cpd07274	1	1
+Succinate Dehydrogenase (Plastoquinone)	crxn00005	cpd16503	-1	1
+NADH dehydrogenase type II (no proton pump)	crxn00006	cpd07274	-1	1
+NADH dehydrogenase type II (no proton pump)	crxn00006	cpd00004	-1	0
+NADH dehydrogenase type II (no proton pump)	crxn00006	cpd00003	1	0
+NADH dehydrogenase type II (no proton pump)	crxn00006	cpd16503	1	1
+NADH dehydrogenase type II (no proton pump)	crxn00006	cpd00067	1	0
+NADPH dehydrogenase type II (no proton pump)	crxn00007	cpd07274	-1	1
+NADPH dehydrogenase type II (no proton pump)	crxn00007	cpd00005	-1	0
+NADPH dehydrogenase type II (no proton pump)	crxn00007	cpd00006	1	0
+NADPH dehydrogenase type II (no proton pump)	crxn00007	cpd16503	1	1
+NADPH dehydrogenase type II (no proton pump)	crxn00007	cpd00067	1	0
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd07274	-1	1
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd00004	-1	0
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd00003	1	0
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd16503	1	1
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd00067	-4	2
+NADH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00008	cpd00067	5	0
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd07274	-1	1
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd00005	-1	0
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd00006	1	0
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd16503	1	1
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd00067	-4	2
+NADPH dehydrogenase (plastoquinone-9 and 4 protons)	crxn00009	cpd00067	5	0
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd12239	-4	1
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd12265	4	1
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd00067	-8	0
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd00067	4	1
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd00007	-1	0
+Plastocyanin oxidase (cytochrome c oxidase)	crxn00010	cpd00001	2	0

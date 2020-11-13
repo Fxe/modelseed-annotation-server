@@ -95,7 +95,8 @@ def post_template_function_rxns(template_id):
 @app.route("/template/<template_id>/annotation/reaction/<rxn_id>/status", methods=["POST"])
 def get_template_annotation_reaction_status(template_id, rxn_id):
     t1 = time.time()
-    
+    if not (rxn_id.startswith('rxn') or rxn_id.startswith('crxn')) or not (len(rxn_id) == 10 or len(rxn_id) == 11):  # rxn00000_c must match this template
+        return "bad reaction id: " + rxn_id, 400
     body = request.get_json()
     reaction_template_id = '{}@{}'.format(rxn_id, template_id)
 
@@ -450,8 +451,8 @@ if __name__ == '__main__':
         MODELSEED_FOLDER = config['modelseed']['path']
         CHEMDUST_URL = config['chemapi']
         
-        #bios = biosapi.BIOS()
-        bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING, MODEL_RXN_GPR = load_cache_data(CACHE_BASE_FOLDER)
+        bios = biosapi.BIOS()
+        #bios, MODEL_CMP_MAPPING, MODEL_CPD_MAPPING, MODEL_RXN_MAPPING, MODEL_RXN_GPR = load_cache_data(CACHE_BASE_FOLDER)
         """
         bios = BIOS_MOCK(CACHE_BASE_FOLDER + 'bios_cache_fungi.json')
         with open(CACHE_BASE_FOLDER + 'cpd_mapping_cache4.json', 'r') as f:
@@ -471,8 +472,10 @@ if __name__ == '__main__':
     #annotation_api_atlas = CurationApi(mclient)
     
     #####      Load ModelSEED     #####
+    from modelseed_annotation.load_custom_seed import load_custom_seed
     modelseed_local = cobrakbase.modelseed.from_local(MODELSEED_FOLDER)
-    
+    #load_custom_seed('data/custom_reactions.tsv', modelseed_local)
+
     host, port, user, pwd = (config['neo4j']['host'], 
                              config['neo4j']['port'], 
                              config['neo4j']['user'], 

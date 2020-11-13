@@ -155,18 +155,27 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
                         'annotation' in doc and \
                         'seed__DOT__reaction' in doc['annotation']:
                     seed_id = doc['annotation']['seed__DOT__reaction']
-                    trxn_b = tm.build_template_reaction_from_modelseed(seed_id, doc['cmp'])
-                    allowed_cmp = {'c', 'e'}  # TODO: TEMPORARY HACK TO AVOID BAD TEMPLATES
-                    valid = True
-                    for token_id in doc['cmp']:
-                        if doc['cmp'][token_id] not in allowed_cmp:
+                    try:
+                        trxn_b = tm.build_template_reaction_from_modelseed(seed_id, doc['cmp'])
+                        print(doc['_id'], seed_id, doc['cmp'])
+                        print(trxn_b)
+                        allowed_cmp = {'c', 'e', 'a', 'k', 'km'}  # TODO: TEMPORARY HACK TO AVOID BAD TEMPLATES
+                        valid = True
+                        for token_id in doc['cmp']:
+                            if doc['cmp'][token_id] not in allowed_cmp:
+                                valid = False
+                        if not (len(template_rxn_id) == 10 or len(template_rxn_id) == 11):
                             valid = False
-                    if not len(template_rxn_id) == 10:
-                        valid = False
-                    if trxn_b is not None and valid:
-                        reactions_to_add.append(NewModelTemplateReaction(trxn_b))
-                    else:
-                        logger.error("unable to build reaction: %s %s", doc['_id'], doc['cmp'])
+                            print('invalid')
+                        if trxn_b is not None and valid:
+                            if trxn_b['id'] == 'crxn00002_k':
+                                print(doc, template_rxn_id, len(template_rxn_id))
+                            reactions_to_add.append(NewModelTemplateReaction(trxn_b))
+                        else:
+                            logger.error("unable to build reaction: %s %s", doc['_id'], doc['cmp'])
+                    except Exception as e:
+                        logger.error("unable to build reaction Exception: %s %s %s", doc['_id'], doc['cmp'], e)
+                
 
     template.reactions += reactions_to_add
     reactions_in_template = set(map(lambda x: x.id, template.reactions))
@@ -180,6 +189,20 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
             nfunction = tc.update_roles(template_rxn, role_change, search_name_to_role_id, True)
         else:
             logger.debug('%s', trxn_id)
+
+    # Mark spontaneous reactions
+    spont = set()
+    for doc in mongo_database['templates_reactions'].find():
+        rxn_id, rxn_template_id = doc['_id'].split('@')
+        if rxn_template_id == annotation_namespace:
+            attr = doc['attributes']
+            if 'spontaneous' in attr and attr['spontaneous']:
+                spont.add(rxn_id)
+
+    logger.info("Spontaneous reactions:", len(spont))
+    for trxn in template.reactions:
+        if trxn.id in spont:
+            trxn['type'] = 'spontaneous'
 
 
     def refresh(template):
