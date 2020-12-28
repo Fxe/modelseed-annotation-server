@@ -157,8 +157,8 @@ def export_template(template_o, modelseed, annotation_api, mongo_database,
                     seed_id = doc['annotation']['seed__DOT__reaction']
                     try:
                         trxn_b = tm.build_template_reaction_from_modelseed(seed_id, doc['cmp'])
-                        print(doc['_id'], seed_id, doc['cmp'])
-                        print(trxn_b)
+                        #print(doc['_id'], seed_id, doc['cmp'])
+                        #print(trxn_b)
                         allowed_cmp = {'c', 'e', 'a', 'k', 'km'}  # TODO: TEMPORARY HACK TO AVOID BAD TEMPLATES
                         valid = True
                         for token_id in doc['cmp']:
